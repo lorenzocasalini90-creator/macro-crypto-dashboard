@@ -63,11 +63,12 @@ st.markdown(f"<div class='small-muted'>{SUBTITLE}</div>", unsafe_allow_html=True
 st.markdown(
     """
 Questa dashboard serve a **identificare cambi di regime** (risk-on / neutral / risk-off) per crypto e asset risk.
+
 Framework:
-- **Liquidità in USD**
-- **Costo reale del denaro**
-- **Risk sentiment**
-- **Conferme crypto**
+- **Liquidità in USD** (carburante)
+- **Costo reale del denaro** (real yield: spesso filtro #1)
+- **Risk sentiment** (USD + stress)
+- **Conferme crypto** (dopo la macro)
 """
 )
 
@@ -449,13 +450,16 @@ def what_changed_table():
 section("What changed", "Snapshot driver principali: variazioni 7 giorni, 30 giorni e 1 mese (proxy ~21 trading days).")
 st.markdown("<div class='card'>", unsafe_allow_html=True)
 df_wc = what_changed_table()
-st.dataframe(df_wc, use_container_width=True, hide_index=True) if len(df_wc) else st.info("Dati insufficienti.")
+if len(df_wc):
+    st.dataframe(df_wc, use_container_width=True, hide_index=True)
+else:
+    st.info("Dati insufficienti.")
 st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
 
 # =========================
-# Regime Score (per payload + vista)
+# Regime Score
 # =========================
 walcl_ok = None
 w = safe_series(walcl).dropna()
@@ -465,8 +469,8 @@ if len(w) > 10:
 
 rrp_trending_down = None
 r = safe_series(rrp).dropna()
-if len(r) > 25:
-    rrp_ma = ma(r, 20).dropna()
+if len(r) > rrp_trend_days + 5:
+    rrp_ma = ma(r, rrp_trend_days).dropna()
     if len(rrp_ma) > 2:
         rrp_trending_down = (rrp_ma.diff().dropna().iloc[-1] < 0)
 
@@ -477,8 +481,8 @@ ry_drop_fast = None if ry_drop_60d_bps is None else (ry_drop_60d_bps <= -50.0)
 
 dxy_below_ma = None
 d = safe_series(dxy).dropna()
-if len(d) > 210:
-    dxy_below_ma = (d.iloc[-1] < ma(d, 200).iloc[-1])
+if len(d) > dxy_ma_days + 10:
+    dxy_below_ma = (d.iloc[-1] < ma(d, dxy_ma_days).iloc[-1])
 
 vix_ok = None if vix_last is None else (vix_last < vix_thr)
 
@@ -511,10 +515,18 @@ else:
 section("Stato (Regime)", "È contesto, non timing: serve per calibrare size e rischio.")
 s1, s2 = st.columns([1.1, 2.2])
 with s1:
-    fig = go.Figure(go.Indicator(mode="gauge+number", value=float(regime_score), number={"suffix": "/100"},
-                                 title={"text": "Regime Score"}, gauge={"axis": {"range": [0, 100]}}))
+    fig = go.Figure(
+        go.Indicator(
+            mode="gauge+number",
+            value=float(regime_score),
+            number={"suffix": "/100"},
+            title={"text": "Regime Score"},
+            gauge={"axis": {"range": [0, 100]}},
+        )
+    )
     fig.update_layout(height=260, margin=dict(l=10, r=10, t=40, b=10))
     st.plotly_chart(fig, use_container_width=True)
+
 with s2:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown(f"### {regime_label}")
@@ -525,7 +537,7 @@ with s2:
                 f"- RRP trend: {pill(rrp_trending_down)}",
                 f"- Real yield < soglia: {pill(ry_ok_level)}",
                 f"- Real yield drop (60g): {pill(ry_drop_fast)}",
-                f"- DXY sotto MA200: {pill(dxy_below_ma)}",
+                f"- DXY sotto MA{dxy_ma_days}: {pill(dxy_below_ma)}",
                 f"- VIX < soglia: {pill(vix_ok)}",
                 f"- BTC sovraperforma Nasdaq: {pill(btc_outperform)}",
             ]
@@ -537,7 +549,7 @@ with s2:
 st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
 
 # =========================
-# Payload generator for ChatGPT (NEW)
+# Reference levels (used in expanders + payload)
 # =========================
 REF = {
     "WALCL": {
@@ -582,148 +594,8 @@ REF = {
     }
 }
 
-def metric_pack(name, series, mode="abs"):
-    out = {"name": name}
-    out["as_of"] = last_date(series)
-    last = safe_last(series)
-    out["last"] = None if last is None else float(last)
-    for hz in ["1M", "6M", "1Y", "5Y"]:
-        out[hz] = summarize_horizon(series, hz, mode=mode)
-    return out
-
-def build_payload_text():
-    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
-
-    payload = {
-        "generated": now,
-        "regime": {"score": float(regime_score), "label": regime_label},
-        "signals": {
-            "walcl_trend_ok": coerce_flag(walcl_ok),
-            "rrp_trending_down": coerce_flag(rrp_trending_down),
-            "real_yield_below_thr": coerce_flag(ry_ok_level),
-            "real_yield_drop_fast": coerce_flag(ry_drop_fast),
-            "dxy_below_ma200": coerce_flag(dxy_below_ma),
-            "vix_below_thr": coerce_flag(vix_ok),
-            "btc_outperforms_nasdaq": coerce_flag(btc_outperform),
-        },
-        "what_changed": df_wc.to_dict(orient="records") if len(df_wc) else [],
-        "reference_levels": REF,
-        "metrics": {
-            "WALCL": metric_pack("WALCL", walcl, mode="abs"),
-            "RRP": metric_pack("RRP", rrp, mode="abs"),
-            "DFII10": metric_pack("RealYield10Y", dfii10, mode="abs"),
-            "T10Y2Y": metric_pack("YieldCurve10Y2Y", t10y2y, mode="abs"),
-            "DXY": metric_pack("DXY", dxy, mode="abs"),
-            "VIX": metric_pack("VIX", vix, mode="abs"),
-            "BTC": metric_pack("BTC", btc, mode="pct"),
-            "RS": metric_pack("BTC_NASDAQ_RS", rs_series, mode="pct"),
-        },
-        "notes": {
-            "method": "RS uses Nasdaq forward-filled on BTC calendar; 1M deltas in what_changed use ~21 trading days proxy."
-        }
-    }
-
-    # render as a readable markdown block (instead of raw JSON)
-    def line_metric(key, label, unit="", pct=False):
-        m = payload["metrics"][key]
-        last = m["last"]
-        last_s = "n/a" if last is None else (f"{last:.2f}{unit}" if unit else f"{last:,.2f}")
-        def hz(h):
-            ss = m[h]
-            if not ss.get("ok"):
-                return "n/a"
-            ch = ss["change"]
-            pos = ss.get("pos")
-            if ch is None or (isinstance(ch, float) and np.isnan(ch)):
-                return "n/a"
-            if pct:
-                return f"{arrow_from(ch)} {ch:+.1f}% | {fmt_pos(pos)}"
-            return f"{arrow_from(ch)} {ch:+.2f}{unit} | {fmt_pos(pos)}"
-        return (
-            f"- **{label}** (last={last_s})\n"
-            f"  - 5Y: {hz('5Y')}\n"
-            f"  - 1Y: {hz('1Y')}\n"
-            f"  - 6M: {hz('6M')}\n"
-            f"  - 1M: {hz('1M')}"
-        )
-
-    txt = []
-    txt.append(f"## Macro Crypto Radar — Payload\nGenerated: {now}\n")
-    txt.append(f"### Regime\n- score: {payload['regime']['score']:.1f}/100\n- label: {payload['regime']['label']}\n")
-    txt.append("### Signals (ON/OFF)\n" + "\n".join([f"- {k}: {payload['signals'][k]}" for k in payload["signals"]]) + "\n")
-
-    txt.append("### What changed (7d/30d/1M)\n")
-    if payload["what_changed"]:
-        for row in payload["what_changed"]:
-            txt.append(f"- {row['Metric']}: last={row['Latest']} | 7d={row['Δ 7d']} | 30d={row['Δ 30d']} | 1M={row['Δ 1M']}")
-    else:
-        txt.append("- n/a")
-
-    txt.append("\n### Metrics summary (5Y/1Y/6M/1M)\n")
-    txt.append(line_metric("WALCL", "WALCL (Fed balance sheet)", unit="", pct=False))
-    txt.append(line_metric("RRP", "RRP (Reverse Repo)", unit="", pct=False))
-    txt.append(line_metric("DFII10", "10Y Real Yield", unit="%", pct=False))
-    txt.append(line_metric("T10Y2Y", "Yield Curve 10Y–2Y", unit="", pct=False))
-    txt.append(line_metric("DXY", "DXY", unit="", pct=False))
-    txt.append(line_metric("VIX", "VIX", unit="", pct=False))
-    txt.append(line_metric("BTC", "BTC", unit="", pct=True))
-    txt.append(line_metric("RS", "BTC/Nasdaq RS", unit="", pct=True))
-
-    txt.append("\n### Reference levels (definitions + good/bad)\n")
-    for k, v in REF.items():
-        txt.append(f"- **{k}**: {v['metric']} | {v['good_bad']} | Note: {v['notes']}")
-
-    txt.append("\n### Notes\n- " + payload["notes"]["method"])
-    return "\n".join(txt)
-
-section("Report payload (per ChatGPT)", "Genera un payload copiabile: lo incolli in ChatGPT e chiedi un report operativo.")
-st.markdown("<div class='card'>", unsafe_allow_html=True)
-
-colA, colB = st.columns([1, 1])
-with colA:
-    gen = st.button("Generate payload", type="primary")
-with colB:
-    st.caption("Suggerimento: genera payload → copia → incolla in ChatGPT con il prompt sotto.")
-
-payload_text = ""
-if gen:
-    payload_text = build_payload_text()
-    st.session_state["payload_text"] = payload_text
-else:
-    payload_text = st.session_state.get("payload_text", "")
-
-if payload_text:
-    st.text_area("Payload (copiami)", payload_text, height=320)
-    st.download_button("Download payload (.txt)", payload_text, file_name="macro_crypto_payload.txt", mime="text/plain")
-else:
-    st.info("Premi “Generate payload” per creare il testo copiabile.")
-
-st.markdown("</div>", unsafe_allow_html=True)
-
-# Prompt standard da usare in ChatGPT
-section("Prompt per ChatGPT (incolla dopo il payload)", "Usalo per ottenere lettura d’insieme + cambiamenti + implicazioni operative.")
-st.markdown("<div class='card'>", unsafe_allow_html=True)
-prompt = """Sei un macro strategist. Usa SOLO i dati nel payload qui sopra. Non inventare numeri.
-Scrivi un report in italiano, sobrio e operativo (no hype), con questa struttura:
-
-1) Executive summary (max 6 righe): cosa dice il regime e cosa è cambiato nel brevissimo (1M + what changed).
-2) Lettura per blocchi: Liquidità / Real rates / Risk sentiment / Crypto confirmation
-   - per ogni blocco: lungo(5Y), medio(1Y), breve(6M), brevissimo(1M)
-   - evidenzia: direzione, velocità del cambiamento e coerenza tra indicatori.
-3) “Cosa sta cambiando adesso e perché” (focus 1M + ultimi 7/30 giorni).
-4) Implicazioni operative:
-   - stance: prudente / base / aggressivo
-   - sizing e risk management coerenti col regime
-   - cosa deve cambiare per aumentare o ridurre rischio.
-5) Trigger da monitorare (3–5) per la prossima finestra (1–4 settimane).
-"""
-st.text_area("Prompt (copiami)", prompt, height=240)
-st.markdown("</div>", unsafe_allow_html=True)
-
-st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
-
 # =========================
-# Charts sections
+# Charts sections (PRIMARY VIEW FIRST)
 # =========================
 section("1) Liquidità", "Carburante del sistema: WALCL e RRP guidano il contesto di liquidità.")
 c1, c2 = st.columns(2)
@@ -792,3 +664,143 @@ with c8:
     chart_card(f"BTC / Nasdaq (Relative Strength) — {view_mode if view_mode != 'Raw' else 'Raw'}", rs_v, badge="Confirmation", kind="line")
 
 st.caption("Tip: Usa ‘1M’ per il brevissimo, e 6M/1Y/5Y per regime e contesto.")
+
+# =========================
+# REPORT (OPTIONAL) — AT THE BOTTOM
+# =========================
+st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
+section("Report (opzionale)", "Genera un payload copiabile: lo incolli in ChatGPT per un report AI operativo (senza API).")
+
+def metric_pack(name, series, mode="abs"):
+    out = {"name": name}
+    out["as_of"] = last_date(series)
+    last = safe_last(series)
+    out["last"] = None if last is None else float(last)
+    for hz in ["1M", "6M", "1Y", "5Y"]:
+        out[hz] = summarize_horizon(series, hz, mode=mode)
+    return out
+
+def build_payload_text():
+    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+
+    payload = {
+        "generated": now,
+        "regime": {"score": float(regime_score), "label": regime_label},
+        "signals": {
+            "walcl_trend_ok": coerce_flag(walcl_ok),
+            "rrp_trending_down": coerce_flag(rrp_trending_down),
+            "real_yield_below_thr": coerce_flag(ry_ok_level),
+            "real_yield_drop_fast": coerce_flag(ry_drop_fast),
+            "dxy_below_ma": coerce_flag(dxy_below_ma),
+            "vix_below_thr": coerce_flag(vix_ok),
+            "btc_outperforms_nasdaq": coerce_flag(btc_outperform),
+        },
+        "what_changed": df_wc.to_dict(orient="records") if len(df_wc) else [],
+        "reference_levels": REF,
+        "metrics": {
+            "WALCL": metric_pack("WALCL", walcl, mode="abs"),
+            "RRP": metric_pack("RRP", rrp, mode="abs"),
+            "DFII10": metric_pack("RealYield10Y", dfii10, mode="abs"),
+            "T10Y2Y": metric_pack("YieldCurve10Y2Y", t10y2y, mode="abs"),
+            "DXY": metric_pack("DXY", dxy, mode="abs"),
+            "VIX": metric_pack("VIX", vix, mode="abs"),
+            "BTC": metric_pack("BTC", btc, mode="pct"),
+            "RS": metric_pack("BTC_NASDAQ_RS", rs_series, mode="pct"),
+        },
+        "notes": {
+            "method": "RS uses Nasdaq forward-filled on BTC calendar; Δ1M in what_changed uses ~21 trading days proxy."
+        }
+    }
+
+    def line_metric(key, label, unit="", pct=False):
+        m = payload["metrics"][key]
+        last = m["last"]
+        last_s = "n/a" if last is None else (f"{last:.2f}{unit}" if unit else f"{last:,.2f}")
+
+        def hz(h):
+            ss = m[h]
+            if not ss.get("ok"):
+                return "n/a"
+            ch = ss["change"]
+            pos = ss.get("pos")
+            if ch is None or (isinstance(ch, float) and np.isnan(ch)):
+                return "n/a"
+            if pct:
+                return f"{arrow_from(ch)} {ch:+.1f}% | {fmt_pos(pos)}"
+            return f"{arrow_from(ch)} {ch:+.2f}{unit} | {fmt_pos(pos)}"
+
+        return (
+            f"- **{label}** (last={last_s})\n"
+            f"  - 5Y: {hz('5Y')}\n"
+            f"  - 1Y: {hz('1Y')}\n"
+            f"  - 6M: {hz('6M')}\n"
+            f"  - 1M: {hz('1M')}"
+        )
+
+    txt = []
+    txt.append(f"## Macro Crypto Radar — Payload\nGenerated: {now}\n")
+    txt.append(f"### Regime\n- score: {payload['regime']['score']:.1f}/100\n- label: {payload['regime']['label']}\n")
+    txt.append("### Signals (ON/OFF)\n" + "\n".join([f"- {k}: {payload['signals'][k]}" for k in payload["signals"]]) + "\n")
+
+    txt.append("### What changed (7d/30d/1M)\n")
+    if payload["what_changed"]:
+        for row in payload["what_changed"]:
+            txt.append(f"- {row['Metric']}: last={row['Latest']} | 7d={row['Δ 7d']} | 30d={row['Δ 30d']} | 1M={row['Δ 1M']}")
+    else:
+        txt.append("- n/a")
+
+    txt.append("\n### Metrics summary (5Y/1Y/6M/1M)\n")
+    txt.append(line_metric("WALCL", "WALCL (Fed balance sheet)", unit="", pct=False))
+    txt.append(line_metric("RRP", "RRP (Reverse Repo)", unit="", pct=False))
+    txt.append(line_metric("DFII10", "10Y Real Yield", unit="%", pct=False))
+    txt.append(line_metric("T10Y2Y", "Yield Curve 10Y–2Y", unit="", pct=False))
+    txt.append(line_metric("DXY", "DXY", unit="", pct=False))
+    txt.append(line_metric("VIX", "VIX", unit="", pct=False))
+    txt.append(line_metric("BTC", "BTC", unit="", pct=True))
+    txt.append(line_metric("RS", "BTC/Nasdaq RS", unit="", pct=True))
+
+    txt.append("\n### Reference levels (definitions + good/bad)\n")
+    for k, v in REF.items():
+        txt.append(f"- **{k}**: {v['metric']} | {v['good_bad']} | Note: {v['notes']}")
+
+    txt.append("\n### Notes\n- " + payload["notes"]["method"])
+    return "\n".join(txt)
+
+PROMPT = """Sei un macro strategist. Usa SOLO i dati nel payload qui sopra. Non inventare numeri.
+Scrivi un report in italiano, sobrio e operativo (no hype), con questa struttura:
+
+1) Executive summary (max 6 righe): cosa dice il regime e cosa è cambiato nel brevissimo (1M + what changed).
+2) Lettura per blocchi: Liquidità / Real rates / Risk sentiment / Crypto confirmation
+   - per ogni blocco: lungo(5Y), medio(1Y), breve(6M), brevissimo(1M)
+   - evidenzia: direzione, velocità del cambiamento e coerenza tra indicatori.
+3) “Cosa sta cambiando adesso e perché” (focus 1M + ultimi 7/30 giorni).
+4) Implicazioni operative:
+   - stance: prudente / base / aggressivo
+   - sizing e risk management coerenti col regime
+   - cosa deve cambiare per aumentare o ridurre rischio.
+5) Trigger da monitorare (3–5) per la prossima finestra (1–4 settimane).
+"""
+
+with st.expander("1) Genera & copia il payload (apri/chiudi)", expanded=False):
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+    colA, colB = st.columns([1, 2])
+    with colA:
+        gen = st.button("Generate payload", type="primary")
+    with colB:
+        st.caption("Workflow: Generate payload → copia → incolla in ChatGPT + prompt (sezione sotto).")
+
+    if gen:
+        st.session_state["payload_text"] = build_payload_text()
+
+    payload_text = st.session_state.get("payload_text", "")
+    if payload_text:
+        st.text_area("Payload (copiami)", payload_text, height=340)
+        st.download_button("Download payload (.txt)", payload_text, file_name="macro_crypto_payload.txt", mime="text/plain")
+    else:
+        st.info("Premi “Generate payload” per creare il testo copiabile.")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+with st.expander("2) Prompt per ChatGPT (apri/chiudi)", expanded=False):
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+    st.text_area("Prompt (copiami)", PROMPT, height=260)
+    st.markdown("</div>", unsafe_allow_html=True)
