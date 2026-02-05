@@ -8,61 +8,69 @@ import plotly.graph_objects as go
 import yfinance as yf
 
 # =========================
-# Page
+# Page + Theme
 # =========================
 st.set_page_config(page_title="Macro Crypto Radar", layout="wide")
 
 TITLE = "Macro Crypto Radar"
-SUBTITLE = "Regime dashboard per capire quando cambia il contesto (liquidità → real rates → risk → conferme)."
+SUBTITLE = "Un radar macro per capire quando cambia il regime (liquidità → real rates → risk → conferme)."
 
-# ---------- CSS (professional look) ----------
+# ---------- CSS (premium, sober) ----------
 st.markdown(
     """
 <style>
-/* Layout */
-.block-container { padding-top: 1.2rem; padding-bottom: 2rem; max-width: 1200px; }
-h1 { letter-spacing: -0.02em; margin-bottom: 0.25rem; }
-h2, h3 { letter-spacing: -0.01em; }
-.small-muted { color: rgba(49,51,63,0.65); font-size: 0.95rem; margin-top: -0.2rem; }
+/* Overall layout */
+.block-container { padding-top: 1.2rem; padding-bottom: 2.2rem; max-width: 1220px; }
+h1 { letter-spacing: -0.02em; margin-bottom: 0.1rem; }
+.small-muted { color: rgba(49,51,63,0.65); font-size: 0.95rem; margin-top: -0.15rem; line-height: 1.25rem; }
+p, li { line-height: 1.35rem; }
+
+/* Premium separators */
+.hr { height: 1px; background: rgba(49,51,63,0.12); margin: 18px 0 18px 0; }
+.hr2 { height: 1px; background: rgba(49,51,63,0.08); margin: 10px 0 14px 0; }
+
+/* Section headers */
+.section-title { font-size: 1.55rem; font-weight: 780; letter-spacing: -0.02em; margin: 0.2rem 0 0.2rem 0; }
+.section-desc { color: rgba(49,51,63,0.70); font-size: 0.98rem; margin: 0 0 0.8rem 0; }
 
 /* Cards */
 .card {
   background: #ffffff;
   border: 1px solid rgba(49,51,63,0.10);
-  border-radius: 14px;
+  border-radius: 16px;
   padding: 14px 14px 10px 14px;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
 }
-.card-title { font-weight: 650; font-size: 0.95rem; color: rgba(49,51,63,0.90); }
-.card-metric { font-size: 1.8rem; font-weight: 750; margin-top: 0.1rem; }
-.card-sub { color: rgba(49,51,63,0.60); font-size: 0.85rem; margin-top: -0.2rem; }
+.card-header {
+  display:flex; justify-content: space-between; align-items: center;
+  margin-bottom: 6px;
+}
+.card-title { font-weight: 740; font-size: 0.98rem; color: rgba(49,51,63,0.90); }
+.card-sub { color: rgba(49,51,63,0.60); font-size: 0.86rem; margin-top: -0.2rem; }
 
-/* Section dividers */
-.hr {
-  height: 1px;
-  background: rgba(49,51,63,0.10);
-  margin: 18px 0 18px 0;
-}
-.section-header {
-  display:flex; align-items: baseline; justify-content: space-between;
-  margin-top: 6px; margin-bottom: 8px;
-}
-.section-header .label { font-size: 1.1rem; font-weight: 750; }
-.section-header .hint { font-size: 0.9rem; color: rgba(49,51,63,0.60); }
+.metric-row { display:flex; gap: 10px; align-items: baseline; margin-top: 2px; }
+.metric-big { font-size: 1.85rem; font-weight: 820; }
+.metric-small { color: rgba(49,51,63,0.60); font-size: 0.9rem; }
 
-/* Badge */
-.badge {
+/* Pills / badges */
+.pill {
   display:inline-block;
-  padding: 3px 10px;
+  padding: 4px 10px;
   border-radius: 999px;
-  border: 1px solid rgba(49,51,63,0.12);
+  border: 1px solid rgba(49,51,63,0.14);
   font-size: 0.82rem;
-  color: rgba(49,51,63,0.75);
+  color: rgba(49,51,63,0.80);
   background: rgba(49,51,63,0.03);
 }
+.pill-on { background: rgba(16, 185, 129, 0.08); border-color: rgba(16, 185, 129, 0.25); color: rgba(16, 120, 86, 1); }
+.pill-off { background: rgba(245, 158, 11, 0.08); border-color: rgba(245, 158, 11, 0.25); color: rgba(146, 64, 14, 1); }
+.pill-na { background: rgba(148, 163, 184, 0.10); border-color: rgba(148, 163, 184, 0.25); color: rgba(71, 85, 105, 1); }
 
-/* Expander spacing */
-details { border-radius: 12px; }
+.kpi-grid { margin-top: 10px; }
+
+/* Expander styling (subtle) */
+details { border-radius: 14px; }
+summary { font-weight: 650; }
 </style>
 """,
     unsafe_allow_html=True,
@@ -73,14 +81,14 @@ st.markdown(f"<div class='small-muted'>{SUBTITLE}</div>", unsafe_allow_html=True
 
 st.markdown(
     """
-Questa dashboard serve a **identificare cambi di regime** per crypto e asset risk.
-Monitoriamo 3 forze principali:
+Questa dashboard serve a **identificare cambi di regime** (risk-on / risk-off) per crypto e asset risk.
+Monitoriamo 3 forze:
 
-- **Liquidità in USD** (carburante del sistema)
-- **Costo reale del denaro** (real yield: quando sale è spesso tossico per risk-on)
-- **Risk appetite sistemico** (stress vs calma)
+1) **Liquidità in USD** (carburante del sistema)  
+2) **Costo reale del denaro** (real yield: quando sale è spesso “kryptonite”)  
+3) **Risk appetite sistemico** (stress o calma sui mercati)
 
-Gli indicatori crypto qui sono usati come **conferma**, non come “driver primario”.
+Gli indicatori crypto sono usati come **conferma**, non come driver principale.
 """
 )
 
@@ -163,22 +171,15 @@ def slice_lookback(s: pd.Series, lookback: str):
 
 
 def cond_turns_true_dates(cond):
-    """
-    cond: Series/DataFrame booleana indicizzata per data
-    ritorna le date in cui passa da False->True
-    """
     if cond is None:
         return []
-
     if isinstance(cond, pd.DataFrame):
         if cond.shape[1] == 0:
             return []
         cond = cond.iloc[:, 0]
-
     c = cond.dropna().astype(bool)
     if len(c) < 2:
         return []
-
     turned = (c.astype(int).diff() == 1).fillna(False)
     mask = turned.to_numpy(dtype=bool)
     return list(c.index[mask])
@@ -209,11 +210,11 @@ def coerce_flag(x):
         return None
 
 
-def flag_icon(x):
-    x = coerce_flag(x)
-    if x is None:
-        return "n/a"
-    return "✅" if x else "—"
+def pill(flag):
+    f = coerce_flag(flag)
+    if f is None:
+        return "<span class='pill pill-na'>n/a</span>"
+    return "<span class='pill pill-on'>ON</span>" if f else "<span class='pill pill-off'>OFF</span>"
 
 
 def mean_flags(flags) -> float:
@@ -229,12 +230,21 @@ def mean_flags(flags) -> float:
     return float(np.mean(vals))
 
 
-def metric_card(title: str, value: str, subtitle: str = ""):
+def section(label: str, desc: str):
+    st.markdown(f"<div class='section-title'>{label}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='section-desc'>{desc}</div>", unsafe_allow_html=True)
+
+
+def metric_card(title: str, value: str, subtitle: str = "", trend: str = ""):
+    trend_html = f"<span class='metric-small'>{trend}</span>" if trend else ""
     st.markdown(
         f"""
 <div class="card">
   <div class="card-title">{title}</div>
-  <div class="card-metric">{value}</div>
+  <div class="metric-row">
+    <div class="metric-big">{value}</div>
+    {trend_html}
+  </div>
   <div class="card-sub">{subtitle}</div>
 </div>
 """,
@@ -242,16 +252,104 @@ def metric_card(title: str, value: str, subtitle: str = ""):
     )
 
 
-def section_header(label: str, hint: str = ""):
+def chart_card(title: str, series: pd.Series, badge: str = "", kind: str = "line"):
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown(
         f"""
-<div class="section-header">
-  <div class="label">{label}</div>
-  <div class="hint">{hint}</div>
+<div class="card-header">
+  <div class="card-title">{title}</div>
+  <div><span class="pill">{badge}</span></div>
 </div>
 """,
         unsafe_allow_html=True,
     )
+    if series is None or len(series.dropna()) == 0:
+        st.info("Dati non disponibili.")
+    else:
+        if kind == "area":
+            st.plotly_chart(px.area(series), use_container_width=True)
+        else:
+            st.plotly_chart(px.line(series), use_container_width=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+# =========================
+# Detailed explanations (premium, collapsible)
+# =========================
+DETAIL = {
+    "WALCL": """
+**Cos’è:** totale attivo della FED (proxy QE/QT).  
+**Se sale / smette di scendere:** drenaggio si ferma → contesto più favorevole per asset risk.  
+**Se scende:** QT → vento contrario, soprattutto se accompagnato da real yield in salita.  
+**Come usarlo:** guarda trend e slope (settimane), non il singolo dato.
+""",
+    "RRP": """
+**Cos’è:** liquidità parcheggiata in reverse repo (cash “in panchina”).  
+**Se scende:** la liquidità tende a migrare altrove (T-bill / MMF / mercati).  
+**Perché conta:** un calo sostenuto è spesso costruttivo per risk-on se non c’è stress sistemico.  
+""",
+    "DFII10": """
+**Cos’è:** rendimento reale 10Y (TIPS).  
+**Se sale:** il risk-free reale diventa competitivo → crypto e growth faticano.  
+**Se scende rapidamente:** alleggerisce le condizioni finanziarie → spazio per risk-on.  
+**Best trigger:** variazione (es. -50 bps in ~2 mesi), non solo il livello.
+""",
+    "T10Y2Y": """
+**Cos’è:** spread 10Y–2Y (curva dei tassi).  
+**Inversione profonda:** warning (policy restrittiva / rischio crescita).  
+**Dis-inversione “buona”:** guidata da aspettative di tagli, non da fuga nel rischio.  
+""",
+    "DXY": """
+**Cos’è:** forza USD vs basket.  
+**USD forte:** spesso stringe condizioni finanziarie globali → freno per asset risk/crypto.  
+**USD debole:** tende a “liberare ossigeno” al risk-on.  
+**Come usarlo:** trend + MA; evita di fissarti sul numero in sé.
+""",
+    "VIX": """
+**Cos’è:** volatilità implicita (stress) su equity USA.  
+**Basso:** calma → risk-on più probabile.  
+**Alto:** risk-off, deleveraging, correlazioni che salgono.  
+**Regola pratica:** crypto raramente riparte con VIX elevato.
+""",
+    "BTC": """
+**Cos’è:** prezzo spot (domanda).  
+**Come usarlo qui:** conferma il macro; non è “segnale primario”.  
+**Idea:** se macro migliora e BTC tiene/rompe al rialzo → conferma.
+""",
+    "RS": """
+**Cos’è:** BTC / Nasdaq (forza relativa).  
+**Se sale:** BTC sovraperforma l’equity growth → leadership e domanda “vera”.  
+**Molto utile** quando macro e risk sono già in miglioramento.
+""",
+    "STATE": """
+### Come leggere “Stato” e “Regime Score”
+- **Regime Score (0–100)** = media pesata di 4 blocchi:
+  - **Liquidità** (WALCL, RRP)  
+  - **Real rates** (real yield: livello + discesa rapida)  
+  - **Risk sentiment** (DXY, VIX)  
+  - **Conferma crypto** (BTC/Nasdaq)
+
+**Cosa significa “RISK-OFF” qui**
+- Non è un “sell signal” automatico.
+- Vuol dire che **le condizioni macro/risk non sono (ancora) favorevoli**: statisticamente i rally sono più fragili e il rischio di drawdown aumenta.
+
+**Cosa dovrebbe cambiare per passare verso risk-on**
+- Real yield che scende (soprattutto velocemente)  
+- DXY che perde trend (sotto MA e in indebolimento)  
+- VIX sotto soglia e stabile  
+- BTC che inizia a sovraperformare Nasdaq (conferma)
+
+**Come usarlo operativamente**
+- Score basso: size più prudente, meno leverage, più selettività.
+- Score medio: build-up graduale e attesa conferme.
+- Score alto: “si cambia marcia” (più aggressività, ma sempre risk management).
+""",
+}
+
+
+def expl_expander(key: str, title: str = "📌 Spiegazione dettagliata (apri/chiudi)"):
+    with st.expander(title, expanded=False):
+        st.markdown(DETAIL.get(key, ""))
 
 
 # =========================
@@ -259,16 +357,13 @@ def section_header(label: str, hint: str = ""):
 # =========================
 def fred_series(series_id: str, api_key: str) -> pd.Series:
     r = requests.get(
-        FRED_BASE,
+        "https://api.stlouisfed.org/fred/series/observations",
         params={"series_id": series_id, "api_key": api_key, "file_type": "json"},
         timeout=30,
     )
     r.raise_for_status()
     obs = r.json().get("observations", [])
-    s = pd.Series(
-        {o["date"]: (np.nan if o["value"] == "." else float(o["value"])) for o in obs},
-        name=series_id,
-    )
+    s = pd.Series({o["date"]: (np.nan if o["value"] == "." else float(o["value"])) for o in obs}, name=series_id)
     s.index = pd.to_datetime(s.index)
     return s.sort_index().dropna()
 
@@ -287,10 +382,7 @@ def yf_close_try(tickers, period="5y"):
     for t in tickers:
         for _ in range(2):
             try:
-                df = yf.download(
-                    t, period=period, interval="1d",
-                    auto_adjust=True, progress=False, threads=False
-                )
+                df = yf.download(t, period=period, interval="1d", auto_adjust=True, progress=False, threads=False)
                 if isinstance(df, pd.DataFrame) and "Close" in df:
                     s = df["Close"].dropna()
                     if len(s) > 5:
@@ -355,6 +447,7 @@ if btc_used is None:
 if warnings:
     st.warning(" ".join(warnings))
 
+
 # =========================
 # View transforms for charts
 # =========================
@@ -367,10 +460,20 @@ vix_v = normalize_series(slice_lookback(vix, lookback), "Raw")
 ixic_v = normalize_series(slice_lookback(ixic, lookback), view_mode)
 btc_v = normalize_series(slice_lookback(btc, lookback), view_mode)
 
+# =========================
+# KPI premium (with trend hints)
+# =========================
+def trend_hint(s: pd.Series, days: int = 20, unit: str = ""):
+    s2 = s.dropna()
+    if len(s2) < days + 2:
+        return ""
+    delta = s2.iloc[-1] - s2.iloc[-days]
+    arrow = "↑" if delta > 0 else ("↓" if delta < 0 else "→")
+    if unit == "%":
+        return f"{arrow} {delta:+.2f}{unit} (≈{days}g)"
+    return f"{arrow} {delta:+.2f}{unit} (≈{days}g)"
 
-# =========================
-# KPI cards (professional)
-# =========================
+
 ry_last = safe_last(dfii10)
 rrp_last = safe_last(rrp)
 dxy_last = safe_last(dxy)
@@ -378,36 +481,15 @@ vix_last = safe_last(vix)
 
 kpi1, kpi2, kpi3, kpi4 = st.columns(4)
 with kpi1:
-    metric_card("Real Yield 10Y", fmt(ry_last, 2, "%"), "Più basso = più spazio per risk-on")
+    metric_card("Real Yield 10Y", fmt(ry_last, 2, "%"), "Più basso = più spazio per risk-on", trend_hint(dfii10, 60, "%"))
 with kpi2:
-    metric_card("RRP", "n/a" if rrp_last is None else f"{rrp_last:,.0f}", "In calo = liquidità che rientra")
+    metric_card("RRP", "n/a" if rrp_last is None else f"{rrp_last:,.0f}", "In calo = liquidità che rientra", trend_hint(rrp, 20, ""))
 with kpi3:
-    metric_card("DXY", fmt(dxy_last, 2), "USD forte spesso frena asset risk")
+    metric_card("DXY", fmt(dxy_last, 2), "USD forte spesso frena asset risk", trend_hint(dxy, 20, ""))
 with kpi4:
-    metric_card("VIX", fmt(vix_last, 2), "Basso = calma / risk-on")
+    metric_card("VIX", fmt(vix_last, 2), "Basso = calma / risk-on", trend_hint(vix, 20, ""))
 
 st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
-
-# =========================
-# Detailed metric explanations (collapsible)
-# =========================
-with st.expander("📘 Guida completa alle metriche (apri/chiudi)", expanded=False):
-    st.markdown(
-        """
-### Come leggere la dashboard (in pratica)
-- **Liquidità (WALCL, RRP):** ti dice se il sistema sta aggiungendo o drenando “carburante”.  
-- **Costo reale (Real Yield):** se il risk-free reale rende tanto, crypto fa più fatica a competere.  
-- **Risk sentiment (DXY, VIX):** filtri: dollaro troppo forte o stress alto spesso bloccano i rally.  
-- **Conferma (BTC/Nasdaq):** se BTC sovraperforma equity growth, è un segnale “di forza vera”.
-
-### Interpretazioni veloci
-- **WALCL stabile/in salita** + **RRP in calo** → setup più favorevole (liquidità che rientra)  
-- **Real yield in discesa rapida** → cambio marcia possibile per asset risk  
-- **DXY in trend ribassista** + **VIX sotto soglia** → contesto più “risk-on”  
-- **BTC sovraperforma Nasdaq per settimane** → conferma che il movimento è “macro-coerente”
-"""
-    )
-
 
 # =========================
 # Data status
@@ -424,7 +506,6 @@ with st.expander("📦 Data status (ultimi aggiornamenti)", expanded=False):
         ("BTC-USD", "BTC", last_date(btc)),
     ]
     st.dataframe(pd.DataFrame(status_rows, columns=["ID", "Indicatore", "Ultima data"]), use_container_width=True)
-
 
 # =========================
 # Signals + Score
@@ -474,13 +555,12 @@ realrates_score = mean_flags([ry_ok_level, ry_drop_fast])
 risk_score = mean_flags([dxy_below_ma, vix_ok])
 crypto_score = mean_flags([btc_outperform])
 
-# Weights
-W = {"liq": 0.30, "rr": 0.30, "risk": 0.25, "cr": 0.15}
+WGT = {"liq": 0.30, "rr": 0.30, "risk": 0.25, "cr": 0.15}
 regime_score = 100.0 * (
-    W["liq"] * liquidity_score
-    + W["rr"] * realrates_score
-    + W["risk"] * risk_score
-    + W["cr"] * crypto_score
+    WGT["liq"] * liquidity_score
+    + WGT["rr"] * realrates_score
+    + WGT["risk"] * risk_score
+    + WGT["cr"] * crypto_score
 )
 
 if regime_score >= 70:
@@ -490,9 +570,10 @@ elif regime_score >= 40:
 else:
     regime_label = "RISK-OFF ⚠️"
 
-section_header("Regime", "Score 0–100 + semafori live. Usa i trigger per capire quando cambia marcia.")
+section("Stato (Regime)", "Che regime stiamo osservando: non è timing, è contesto. Serve per calibrare size/rischio.")
+expl_expander("STATE", "📘 Come leggere Stato/Score (apri/chiudi)")
 
-s1, s2, s3 = st.columns([1.1, 1.2, 2.7])
+s1, s2, s3 = st.columns([1.1, 1.25, 2.65])
 
 with s1:
     fig = go.Figure(
@@ -508,22 +589,32 @@ with s1:
     st.plotly_chart(fig, use_container_width=True)
 
 with s2:
-    st.subheader("Stato")
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown(f"### {regime_label}")
-    st.caption("Media pesata: Liquidità (WALCL/RRP), Real rates (Real Yield), Risk (DXY/VIX), Conferma (BTC/Nasdaq).")
+    st.markdown(
+        """
+**Interpretazione rapida**
+- **Risk-off:** rally più fragili, più rischio di drawdown.
+- **Neutral:** si costruisce, si cercano conferme.
+- **Risk-on:** si può aumentare aggressività (con risk management).
+"""
+    )
     st.markdown(
         "\n".join(
             [
                 f"- **Real yield**: {fmt(ry_last,2,'%')} | **Δ60g**: {('n/a' if ry_drop_60d_bps is None else f'{ry_drop_60d_bps:.0f} bps')}",
-                f"- **VIX**: {fmt(vix_last,2)}",
-                f"- **DXY sotto MA{dxy_ma_days}**: {flag_icon(dxy_below_ma)}",
-                f"- **BTC RS ({rs_days}g)**: {flag_icon(btc_outperform)}",
+                f"- **DXY sotto MA{dxy_ma_days}**: {pill(dxy_below_ma)}",
+                f"- **VIX < {vix_thr:.1f}**: {pill(vix_ok)}",
+                f"- **BTC RS ({rs_days}g)**: {pill(btc_outperform)}",
             ]
-        )
+        ),
+        unsafe_allow_html=True,
     )
+    st.markdown("</div>", unsafe_allow_html=True)
 
 with s3:
-    st.subheader("Semafori (live)")
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+    st.markdown("#### Semafori (live)")
     signals = {
         "WALCL (trend proxy) ≥ 0": walcl_ok,
         f"RRP MA{rrp_trend_days} in calo": rrp_trending_down,
@@ -536,18 +627,18 @@ with s3:
     df_sig = pd.DataFrame(
         {
             "Signal": list(signals.keys()),
-            "Status": [("n/a" if coerce_flag(v) is None else ("ON ✅" if coerce_flag(v) else "OFF —")) for v in signals.values()],
+            "Status": [("n/a" if coerce_flag(v) is None else ("ON" if coerce_flag(v) else "OFF")) for v in signals.values()],
         }
     )
     st.dataframe(df_sig, use_container_width=True, height=240)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
 
 # =========================
 # Triggers recenti
 # =========================
-section_header("Trigger recenti", "Eventi di regime negli ultimi giorni (False → True).")
-
+section("Trigger recenti", "Eventi di regime: quando una condizione passa da False → True (nell’ultima finestra).")
 recent_start = pd.Timestamp.today().normalize() - pd.Timedelta(days=trigger_window_days)
 trigger_items = []
 
@@ -587,134 +678,81 @@ if len(ratio.dropna()) > rs_days + 30:
     if len(rs_trig_dates) > 0:
         trigger_items.append((f"BTC RS>0 ({rs_days}g)", rs_trig_dates[-1].date().isoformat()))
 
+st.markdown("<div class='card'>", unsafe_allow_html=True)
 if len(trigger_items) == 0:
     st.info("Nessun trigger rilevato nella finestra selezionata (o dati insufficienti).")
 else:
     st.dataframe(pd.DataFrame(trigger_items, columns=["Trigger", "Ultima attivazione"]), use_container_width=True)
+st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
 
 # =========================
-# Charts + collapsible explanations per metrica
+# Sections + Expander ABOVE charts
 # =========================
-DETAIL = {
-    "WALCL": """
-**Cos’è:** totale attivo della FED (proxy di QE/QT).  
-**Se sale / smette di scendere:** drenaggio si ferma → spesso più costruttivo per asset risk.  
-**Se scende:** QT → vento contrario.  
-**Da guardare:** trend e “slope” su settimane, non il dato puntuale.
-""",
-    "RRP": """
-**Cos’è:** cash parcheggiato in reverse repo (liquidità “in panchina”).  
-**Se scende:** può tornare verso T-bill / money market / asset risk (dipende dal contesto).  
-**Da guardare:** direzione e velocità del calo.
-""",
-    "DFII10": """
-**Cos’è:** rendimento reale 10Y (TIPS).  
-**Se sale:** aumenta l’attrattività del risk-free reale → crypto tende a soffrire.  
-**Se scende rapidamente:** migliora il “financial conditions impulse”.  
-**Da guardare:** livello + variazione (es. -50 bps in ~2 mesi).
-""",
-    "T10Y2Y": """
-**Cos’è:** spread 10Y–2Y (curva).  
-**Inversione profonda:** warning (policy restrittiva / rischio crescita).  
-**Dis-inversione “buona”:** guidata da aspettative di tagli, non da crash.  
-""",
-    "DXY": """
-**Cos’è:** forza USD vs basket.  
-**USD forte:** spesso stringe le condizioni finanziarie globali → freno per risk-on.  
-**USD debole:** spesso aiuta commodities/EM/crypto.  
-**Da guardare:** trend (MA, massimi/minimi), non il singolo valore.
-""",
-    "VIX": """
-**Cos’è:** volatilità implicita S&P 500 (stress).  
-**Basso:** mercato “calmo” → più spazio per risk-on.  
-**Alto:** risk-off, deleveraging, correlazioni che vanno a 1.  
-""",
-    "BTC": """
-**Cos’è:** prezzo spot (proxy della domanda).  
-**Da solo non basta:** diventa utile come conferma quando macro/risk sono coerenti.  
-""",
-    "RS": """
-**Cos’è:** BTC / Nasdaq (forza relativa).  
-**Se sale:** BTC sta sovraperformando l’equity growth → segnale di leadership.  
-**Molto utile** quando la macro è già in miglioramento.
-""",
-}
-
-
-def chart_card(title: str, series: pd.Series, badge: str = "", kind: str = "line"):
-    st.markdown("<div class='card'>", unsafe_allow_html=True)
-    header = f"**{title}**"
-    if badge:
-        header += f"  <span class='badge'>{badge}</span>"
-    st.markdown(header, unsafe_allow_html=True)
-
-    if series is None or len(series.dropna()) == 0:
-        st.info("Dati non disponibili.")
-    else:
-        if kind == "area":
-            st.plotly_chart(px.area(series), use_container_width=True)
-        else:
-            st.plotly_chart(px.line(series), use_container_width=True)
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
-
-def expl_expander(key: str):
-    with st.expander("📌 Spiegazione (apri/chiudi)", expanded=False):
-        st.markdown(DETAIL.get(key, ""))
-
-
-# ---- 4 sections with clearer separation
-section_header("1) Liquidità", "Carburante: bilancio FED + cash parcheggiato.")
-c1, c2 = st.columns(2)
-with c1:
-    chart_card(f"Fed Balance Sheet (WALCL) — {view_mode}", walcl_v, badge="Liquidity", kind="line")
+section(
+    "1) Liquidità",
+    "Il “carburante” del sistema. Se la FED smette di drenare (WALCL stabile/in salita) e la liquidità parcheggiata (RRP) scende, il contesto tende a migliorare. "
+    "Al contrario, QT persistente + RRP che non cala = vento contrario."
+)
+col1, col2 = st.columns(2)
+with col1:
     expl_expander("WALCL")
-with c2:
-    chart_card(f"Reverse Repo (RRP) — {view_mode}", rrp_v, badge="Liquidity", kind="area")
+    chart_card(f"Fed Balance Sheet (WALCL) — {view_mode}", walcl_v, badge="Liquidity", kind="line")
+with col2:
     expl_expander("RRP")
+    chart_card(f"Reverse Repo (RRP) — {view_mode}", rrp_v, badge="Liquidity", kind="area")
 
 st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
 
-section_header("2) Costo reale del denaro", "Real yield = competizione del risk-free reale.")
-c3, c4 = st.columns(2)
-with c3:
-    chart_card("10Y Real Yield (DFII10) — Raw", dfii10_v, badge="Real Rates", kind="line")
+section(
+    "2) Costo reale del denaro",
+    "Il filtro più importante: quando il **real yield** sale, crypto e growth competono con un risk-free reale più attraente. "
+    "Quando scende (soprattutto rapidamente), spesso si apre la finestra risk-on."
+)
+col3, col4 = st.columns(2)
+with col3:
     expl_expander("DFII10")
-with c4:
-    chart_card("Yield Curve 10Y–2Y (T10Y2Y) — Raw", t10y2y_v, badge="Rates", kind="line")
+    chart_card("10Y Real Yield (DFII10) — Raw", dfii10_v, badge="Real Rates", kind="line")
+with col4:
     expl_expander("T10Y2Y")
+    chart_card("Yield Curve 10Y–2Y (T10Y2Y) — Raw", t10y2y_v, badge="Rates", kind="line")
 
 st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
 
-section_header("3) Risk sentiment", "Filtri: USD + stress di mercato.")
-c5, c6 = st.columns(2)
-with c5:
-    chart_card(f"DXY — {view_mode}", dxy_v, badge="Risk Filter", kind="line")
+section(
+    "3) Risk sentiment",
+    "Sono i filtri: anche con macro in miglioramento, un USD in accelerazione (DXY) o stress alto (VIX) può bloccare il risk-on. "
+    "DXY in indebolimento + VIX contenuto = contesto più respirabile."
+)
+col5, col6 = st.columns(2)
+with col5:
     expl_expander("DXY")
-with c6:
-    chart_card("VIX — Raw", vix_v, badge="Risk Filter", kind="line")
+    chart_card(f"DXY — {view_mode}", dxy_v, badge="Risk Filter", kind="line")
+with col6:
     expl_expander("VIX")
+    chart_card("VIX — Raw", vix_v, badge="Risk Filter", kind="line")
 
 st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
 
-section_header("4) Crypto confirmation", "Conferme: prezzo e forza relativa.")
-c7, c8 = st.columns(2)
-with c7:
-    chart_card(f"BTC — {view_mode}", btc_v, badge="Confirmation", kind="line")
+section(
+    "4) Crypto confirmation",
+    "Qui cerchiamo conferme: BTC che regge e soprattutto BTC che sovraperforma Nasdaq è un segnale di leadership. "
+    "Se BTC underperforma equity growth, spesso non è ancora il momento (o è un rally fragile)."
+)
+col7, col8 = st.columns(2)
+with col7:
     expl_expander("BTC")
-
-with c8:
-    # RS chart
+    chart_card(f"BTC — {view_mode}", btc_v, badge="Confirmation", kind="line")
+with col8:
+    expl_expander("RS")
     if len(btc.dropna()) > 0 and len(ixic.dropna()) > 0:
         ratio_chart = slice_lookback((btc.dropna() / ixic.dropna()).dropna(), lookback)
         ratio_chart = normalize_series(ratio_chart, view_mode if view_mode != "Raw" else "Raw")
     else:
         ratio_chart = pd.Series(dtype=float)
-
     chart_card(f"BTC / Nasdaq (Relative Strength) — {view_mode}", ratio_chart, badge="Confirmation", kind="line")
-    expl_expander("RS")
 
-st.caption("Tip: usa **Index 100** per confrontare trend su scale diverse; usa **Z-score** per capire se un indicatore è “estremo” rispetto al suo storico.")
+st.caption(
+    "Tip: usa **Index 100** per confrontare trend su scale diverse; usa **Z-score** per capire se un indicatore è “estremo” rispetto al suo storico."
+)
