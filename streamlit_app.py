@@ -51,8 +51,6 @@ p, li { line-height: 1.35rem; }
 .pill-on { background: rgba(16, 185, 129, 0.08); border-color: rgba(16, 185, 129, 0.25); color: rgba(16, 120, 86, 1); }
 .pill-off { background: rgba(245, 158, 11, 0.08); border-color: rgba(245, 158, 11, 0.25); color: rgba(146, 64, 14, 1); }
 .pill-na { background: rgba(148, 163, 184, 0.10); border-color: rgba(148, 163, 184, 0.25); color: rgba(71, 85, 105, 1); }
-
-details { border-radius: 14px; }
 summary { font-weight: 650; }
 </style>
 """,
@@ -66,10 +64,10 @@ st.markdown(
     """
 Questa dashboard serve a **identificare cambi di regime** (risk-on / neutral / risk-off) per crypto e asset risk.
 Framework:
-- **Liquidità in USD** (carburante)
-- **Costo reale del denaro** (real yield: spesso il filtro #1)
-- **Risk sentiment** (USD + stress)
-- **Conferme crypto** (dopo la macro)
+- **Liquidità in USD**
+- **Costo reale del denaro**
+- **Risk sentiment**
+- **Conferme crypto**
 """
 )
 
@@ -89,15 +87,11 @@ def safe_series(x):
 
 def safe_last(s):
     s = safe_series(s).dropna()
-    if len(s) == 0:
-        return None
-    return float(s.iloc[-1])
+    return None if len(s) == 0 else float(s.iloc[-1])
 
 def last_date(s):
     s = safe_series(s).dropna()
-    if len(s) == 0:
-        return None
-    return s.index.max().date().isoformat()
+    return None if len(s) == 0 else s.index.max().date().isoformat()
 
 def fmt(x, digits=2, suffix=""):
     if x is None or (isinstance(x, float) and np.isnan(x)):
@@ -111,7 +105,7 @@ def bp_change_n(s: pd.Series, n: int):
     s2 = s.dropna()
     if len(s2) < n + 2:
         return pd.Series(dtype=float)
-    return (s2 - s2.shift(n)) * 100.0  # 1pp=100bps
+    return (s2 - s2.shift(n)) * 100.0
 
 def normalize_series(s: pd.Series, mode: str):
     s = s.dropna()
@@ -121,15 +115,12 @@ def normalize_series(s: pd.Series, mode: str):
         return s
     if mode == "Index 100":
         base = float(s.iloc[0])
-        if base == 0:
-            return s
-        return (s / base) * 100.0
+        return s if base == 0 else (s / base) * 100.0
     if mode == "Z-score":
         w = min(252, len(s))
         mu = s.rolling(w).mean()
         sd = s.rolling(w).std()
-        z = (s - mu) / sd
-        return z.dropna()
+        return ((s - mu) / sd).dropna()
     return s
 
 def slice_lookback(s: pd.Series, lookback: str):
@@ -149,19 +140,6 @@ def slice_lookback(s: pd.Series, lookback: str):
     else:
         start = s.index.min()
     return s.loc[s.index >= start]
-
-def cond_turns_true_dates(cond):
-    if cond is None:
-        return []
-    if isinstance(cond, pd.DataFrame):
-        if cond.shape[1] == 0:
-            return []
-        cond = cond.iloc[:, 0]
-    c = cond.dropna().astype(bool)
-    if len(c) < 2:
-        return []
-    turned = (c.astype(int).diff() == 1).fillna(False)
-    return list(c.index[turned.to_numpy(dtype=bool)])
 
 def coerce_flag(x):
     if x is None:
@@ -237,25 +215,17 @@ def chart_card(title: str, series: pd.Series, badge: str = "", kind: str = "line
     if series is None or len(series.dropna()) == 0:
         st.info("Dati non disponibili.")
     else:
-        if kind == "area":
-            st.plotly_chart(px.area(series), use_container_width=True)
-        else:
-            st.plotly_chart(px.line(series), use_container_width=True)
+        st.plotly_chart(px.area(series) if kind == "area" else px.line(series), use_container_width=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
 def trend_hint(s, days: int = 20, unit: str = ""):
     s = safe_series(s).dropna()
     if len(s) < days + 2:
         return ""
-    try:
-        a = float(s.iloc[-1]); b = float(s.iloc[-days])
-    except Exception:
-        return ""
+    a = float(s.iloc[-1]); b = float(s.iloc[-days])
     delta = a - b
     arrow = "↑" if delta > 0 else ("↓" if delta < 0 else "→")
-    if unit:
-        return f"{arrow} {delta:+.2f}{unit} (≈{days}g)"
-    return f"{arrow} {delta:+.2f} (≈{days}g)"
+    return f"{arrow} {delta:+.2f}{unit} (≈{days}g)" if unit else f"{arrow} {delta:+.2f} (≈{days}g)"
 
 def delta_abs(s: pd.Series, days: int):
     s = safe_series(s).dropna()
@@ -288,10 +258,6 @@ def compute_rs(btc_close: pd.Series, nasdaq_close: pd.Series) -> pd.Series:
     return rs
 
 def summarize_horizon(series: pd.Series, horizon: str, mode: str = "abs"):
-    """
-    horizon: '1M','6M','1Y','5Y'
-    mode: abs or pct
-    """
     s = safe_series(series).dropna()
     if len(s) < 10:
         return {"ok": False}
@@ -305,14 +271,11 @@ def summarize_horizon(series: pd.Series, horizon: str, mode: str = "abs"):
     else:
         ch = last - first
     lo = float(s_h.min()); hi = float(s_h.max())
-    pos = None if (hi - lo) == 0 else (last - lo) / (hi - lo)  # 0..1
+    pos = None if (hi - lo) == 0 else (last - lo) / (hi - lo)
     return {"ok": True, "last": last, "change": ch, "lo": lo, "hi": hi, "pos": pos, "n": len(s_h)}
 
 def fmt_pos(pos):
-    if pos is None:
-        return "n/a"
-    return f"{pos*100:.0f}pctl (within range)"
-
+    return "n/a" if pos is None else f"{pos*100:.0f}pctl(range)"
 
 # =========================
 # Data sources
@@ -353,7 +316,6 @@ def yf_close_try(tickers, period="5y"):
             time.sleep(1)
     return pd.Series(dtype=float, name=str(tickers[0])), None
 
-
 # =========================
 # Sidebar controls
 # =========================
@@ -370,12 +332,6 @@ with st.sidebar:
     dxy_ma_days = st.slider("DXY filtro MA (giorni)", 50, 300, 200, 10)
     rs_days = st.slider("BTC vs Nasdaq RS (giorni)", 10, 90, 30, 1)
 
-    st.divider()
-    st.subheader("Trigger recenti")
-    ry_drop_bps = st.slider("Real Yield drop (bps) in 60g", 10, 150, 50, 5)
-    trigger_window_days = st.slider("Finestra trigger (giorni)", 7, 90, 30, 1)
-
-
 # =========================
 # Secrets
 # =========================
@@ -383,7 +339,6 @@ fred_key = st.secrets.get("FRED_API_KEY", "")
 if not fred_key:
     st.error("Manca FRED_API_KEY nei Secrets di Streamlit Cloud.")
     st.stop()
-
 
 # =========================
 # Load data
@@ -435,276 +390,72 @@ with kpi3:
 with kpi4:
     metric_card("VIX", fmt(vix_last, 2), "Basso = calma / risk-on", trend_hint(vix, 20, ""))
 
+st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
+
 # =========================
 # What changed (7d / 30d / 1M)
 # =========================
 def what_changed_table():
     rows = []
-
     walcl_last = safe_last(walcl)
     if walcl_last is not None:
         last_b = walcl_last / 1000.0
-        d7 = delta_abs(walcl, 7); d30 = delta_abs(walcl, 30)
-        d1m = delta_abs(walcl, 21)
-        rows.append((
-            "WALCL (Fed balance sheet)",
-            f"{last_b:,.0f}B",
-            "n/a" if d7 is None else f"{arrow_from(d7)} {d7/1000.0:+,.0f}B",
-            "n/a" if d30 is None else f"{arrow_from(d30)} {d30/1000.0:+,.0f}B",
-            "n/a" if d1m is None else f"{arrow_from(d1m)} {d1m/1000.0:+,.0f}B",
-        ))
-
+        d7 = delta_abs(walcl, 7); d30 = delta_abs(walcl, 30); d1m = delta_abs(walcl, 21)
+        rows.append(("WALCL", f"{last_b:,.0f}B",
+                    "n/a" if d7 is None else f"{arrow_from(d7)} {d7/1000.0:+,.0f}B",
+                    "n/a" if d30 is None else f"{arrow_from(d30)} {d30/1000.0:+,.0f}B",
+                    "n/a" if d1m is None else f"{arrow_from(d1m)} {d1m/1000.0:+,.0f}B"))
     if rrp_last is not None:
         d7 = delta_abs(rrp, 7); d30 = delta_abs(rrp, 30); d1m = delta_abs(rrp, 21)
-        rows.append((
-            "RRP",
-            f"{rrp_last:,.0f}",
-            "n/a" if d7 is None else f"{arrow_from(d7)} {d7:+,.0f}",
-            "n/a" if d30 is None else f"{arrow_from(d30)} {d30:+,.0f}",
-            "n/a" if d1m is None else f"{arrow_from(d1m)} {d1m:+,.0f}",
-        ))
-
+        rows.append(("RRP", f"{rrp_last:,.0f}",
+                    "n/a" if d7 is None else f"{arrow_from(d7)} {d7:+,.0f}",
+                    "n/a" if d30 is None else f"{arrow_from(d30)} {d30:+,.0f}",
+                    "n/a" if d1m is None else f"{arrow_from(d1m)} {d1m:+,.0f}"))
     if ry_last is not None:
         d7 = delta_abs(dfii10, 7); d30 = delta_abs(dfii10, 30); d1m = delta_abs(dfii10, 21)
-        rows.append((
-            "10Y Real Yield",
-            f"{ry_last:.2f}%",
-            "n/a" if d7 is None else f"{arrow_from(d7)} {d7*100:+.0f} bps",
-            "n/a" if d30 is None else f"{arrow_from(d30)} {d30*100:+.0f} bps",
-            "n/a" if d1m is None else f"{arrow_from(d1m)} {d1m*100:+.0f} bps",
-        ))
-
+        rows.append(("Real Yield 10Y", f"{ry_last:.2f}%",
+                    "n/a" if d7 is None else f"{arrow_from(d7)} {d7*100:+.0f} bps",
+                    "n/a" if d30 is None else f"{arrow_from(d30)} {d30*100:+.0f} bps",
+                    "n/a" if d1m is None else f"{arrow_from(d1m)} {d1m*100:+.0f} bps"))
     if dxy_last is not None:
         d7 = delta_abs(dxy, 7); d30 = delta_abs(dxy, 30); d1m = delta_abs(dxy, 21)
-        rows.append((
-            "DXY",
-            f"{dxy_last:.2f}",
-            "n/a" if d7 is None else f"{arrow_from(d7)} {d7:+.2f}",
-            "n/a" if d30 is None else f"{arrow_from(d30)} {d30:+.2f}",
-            "n/a" if d1m is None else f"{arrow_from(d1m)} {d1m:+.2f}",
-        ))
-
+        rows.append(("DXY", f"{dxy_last:.2f}",
+                    "n/a" if d7 is None else f"{arrow_from(d7)} {d7:+.2f}",
+                    "n/a" if d30 is None else f"{arrow_from(d30)} {d30:+.2f}",
+                    "n/a" if d1m is None else f"{arrow_from(d1m)} {d1m:+.2f}"))
     if vix_last is not None:
         d7 = delta_abs(vix, 7); d30 = delta_abs(vix, 30); d1m = delta_abs(vix, 21)
-        rows.append((
-            "VIX",
-            f"{vix_last:.2f}",
-            "n/a" if d7 is None else f"{arrow_from(d7)} {d7:+.2f}",
-            "n/a" if d30 is None else f"{arrow_from(d30)} {d30:+.2f}",
-            "n/a" if d1m is None else f"{arrow_from(d1m)} {d1m:+.2f}",
-        ))
-
+        rows.append(("VIX", f"{vix_last:.2f}",
+                    "n/a" if d7 is None else f"{arrow_from(d7)} {d7:+.2f}",
+                    "n/a" if d30 is None else f"{arrow_from(d30)} {d30:+.2f}",
+                    "n/a" if d1m is None else f"{arrow_from(d1m)} {d1m:+.2f}"))
     btc_last = safe_last(btc)
     if btc_last is not None:
         p7 = delta_pct(btc, 7); p30 = delta_pct(btc, 30); p1m = delta_pct(btc, 21)
-        rows.append((
-            "BTC",
-            f"{btc_last:,.0f}",
-            "n/a" if p7 is None else f"{arrow_from(p7)} {p7:+.1f}%",
-            "n/a" if p30 is None else f"{arrow_from(p30)} {p30:+.1f}%",
-            "n/a" if p1m is None else f"{arrow_from(p1m)} {p1m:+.1f}%",
-        ))
-
+        rows.append(("BTC", f"{btc_last:,.0f}",
+                    "n/a" if p7 is None else f"{arrow_from(p7)} {p7:+.1f}%",
+                    "n/a" if p30 is None else f"{arrow_from(p30)} {p30:+.1f}%",
+                    "n/a" if p1m is None else f"{arrow_from(p1m)} {p1m:+.1f}%"))
     rs_last = safe_last(rs_series)
     if rs_last is not None:
         p7 = delta_pct(rs_series, 7); p30 = delta_pct(rs_series, 30); p1m = delta_pct(rs_series, 21)
-        rows.append((
-            "BTC/Nasdaq RS",
-            f"{rs_last:.4f}",
-            "n/a" if p7 is None else f"{arrow_from(p7)} {p7:+.2f}%",
-            "n/a" if p30 is None else f"{arrow_from(p30)} {p30:+.2f}%",
-            "n/a" if p1m is None else f"{arrow_from(p1m)} {p1m:+.2f}%",
-        ))
+        rows.append(("BTC/Nasdaq RS", f"{rs_last:.4f}",
+                    "n/a" if p7 is None else f"{arrow_from(p7)} {p7:+.2f}%",
+                    "n/a" if p30 is None else f"{arrow_from(p30)} {p30:+.2f}%",
+                    "n/a" if p1m is None else f"{arrow_from(p1m)} {p1m:+.2f}%"))
 
     return pd.DataFrame(rows, columns=["Metric", "Latest", "Δ 7d", "Δ 30d", "Δ 1M"])
 
-section("What changed", "Snapshot driver principali: variazioni 7 giorni, 30 giorni e 1 mese.")
+section("What changed", "Snapshot driver principali: variazioni 7 giorni, 30 giorni e 1 mese (proxy ~21 trading days).")
 st.markdown("<div class='card'>", unsafe_allow_html=True)
 df_wc = what_changed_table()
-if len(df_wc) == 0:
-    st.info("Dati insufficienti per calcolare le variazioni.")
-else:
-    st.dataframe(df_wc, use_container_width=True, hide_index=True)
+st.dataframe(df_wc, use_container_width=True, hide_index=True) if len(df_wc) else st.info("Dati insufficienti.")
 st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
 
 # =========================
-# Reference levels + explainers (with snapshot)
-# =========================
-def metric_snapshot(name: str, series: pd.Series, unit: str, mode: str):
-    # mode: 'abs' or 'pct' for change; unit used in formatting last
-    s1m = summarize_horizon(series, "1M", mode=mode)
-    s6m = summarize_horizon(series, "6M", mode=mode)
-    s1y = summarize_horizon(series, "1Y", mode=mode)
-
-    last = safe_last(series)
-    if last is None:
-        return f"**Snapshot attuale:** n/a"
-
-    if unit == "%":
-        last_str = f"{last:.2f}%"
-    else:
-        last_str = f"{last:,.2f}" if abs(last) < 10000 else f"{last:,.0f}"
-
-    def ch_str(ss):
-        if not ss.get("ok"):
-            return "n/a"
-        ch = ss["change"]
-        if ch is None or (isinstance(ch, float) and np.isnan(ch)):
-            return "n/a"
-        if mode == "pct":
-            return f"{arrow_from(ch)} {ch:+.1f}% | {fmt_pos(ss['pos'])}"
-        return f"{arrow_from(ch)} {ch:+.2f} | {fmt_pos(ss['pos'])}"
-
-    return (
-        f"**Snapshot attuale ({name}):** {last_str}\n\n"
-        f"- **1M:** {ch_str(s1m)}\n"
-        f"- **6M:** {ch_str(s6m)}\n"
-        f"- **1Y:** {ch_str(s1y)}"
-    )
-
-# Reference content (pragmatic)
-REF = {
-    "WALCL": {
-        "what": "Totale attivo della FED (proxy QE/QT). È una misura della direzione della liquidità lato banca centrale.",
-        "refs": "- **Costruttivo:** trend stabile/in salita (QT rallenta / finisce)\n- **Negativo:** trend in calo persistente (QT)",
-        "bi": "- **Se sale:** tende ad allentare condizioni finanziarie\n- **Se scende:** tende a stringerle",
-    },
-    "RRP": {
-        "what": "Reverse Repo: cash parcheggiato alla FED. È liquidità “in panchina”.",
-        "refs": "- **Costruttivo:** RRP che scende in modo sostenuto\n- **Meno bene:** RRP stabile alto o che risale",
-        "bi": "- **Se scende:** potenziale supporto a asset risk\n- **Se sale:** più cash fuori dal circuito risk",
-    },
-    "DFII10": {
-        "what": "10Y Real Yield (TIPS). È il rendimento risk-free *reale*.",
-        "refs": "- **Bullish crypto (regola pratica):** < ~1.5–2.0%\n- **Bearish:** > ~2% e/o in salita rapida\n- **Trigger forte:** -50 bps in ~2 mesi",
-        "bi": "- **Se sale:** crypto/growth competono con risk-free reale\n- **Se scende:** “sollievo” condizioni finanziarie",
-    },
-    "T10Y2Y": {
-        "what": "Yield curve 10Y–2Y (spread). Descrive stance di policy e aspettative crescita.",
-        "refs": "- **Warning:** inversione profonda e persistente\n- **Più costruttivo:** dis-inversione guidata da tagli (non crash)",
-        "bi": "- **Più invertita:** condizioni più restrittive\n- **Si normalizza:** spesso più favorevole ai risk asset (se non per crisi)",
-    },
-    "DXY": {
-        "what": "Dollar Index (forza USD). È un filtro di condizioni finanziarie globali.",
-        "refs": "- **Costruttivo per risk:** DXY debole / sotto trend (es. sotto MA lunga)\n- **Negativo:** DXY forte/in accelerazione",
-        "bi": "- **Se sale:** tende a stringere global liquidity\n- **Se scende:** più ossigeno per risk/EM/crypto",
-    },
-    "VIX": {
-        "what": "Volatilità implicita equity USA (stress).",
-        "refs": "- **Risk-on:** < ~15\n- **Neutro:** 15–20\n- **Risk-off serio:** > ~25",
-        "bi": "- **Se sale:** deleveraging, correlazioni aumentano\n- **Se scende:** contesto più favorevole ai risk asset",
-    },
-    "BTC": {
-        "what": "Prezzo BTC spot. In questo framework è una **conferma**, non il driver.",
-        "refs": "- **Costruttivo:** BTC regge e/o rompe mentre macro migliora\n- **Meno bene:** BTC underperforma mentre macro è negativa",
-        "bi": "- **Se sale con macro ok:** conferma risk-on\n- **Se sale con macro no:** spesso rally fragile",
-    },
-    "RS": {
-        "what": "BTC/Nasdaq (forza relativa). Misura leadership di BTC vs equity growth.",
-        "refs": "- **Costruttivo:** RS in salita per settimane\n- **Warning:** RS in calo (BTC underperforma growth)",
-        "bi": "- **RS ↑:** domanda ‘vera’ e leadership\n- **RS ↓:** spesso non è ancora il momento",
-    },
-}
-
-def expander_metric(key: str, title: str, series: pd.Series, unit: str, mode: str):
-    with st.expander(f"📘 {title} — definizione, livelli guida, lettura (apri/chiudi)", expanded=False):
-        st.markdown(f"**Che metrica è:** {REF[key]['what']}")
-        st.markdown("**Valori di riferimento (pratici):**\n" + REF[key]["refs"])
-        st.markdown("**Interpretazione bidirezionale:**\n" + REF[key]["bi"])
-        st.markdown("---")
-        st.markdown(metric_snapshot(title, series, unit=unit, mode=mode))
-
-# =========================
-# Report generator
-# =========================
-def make_report():
-    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
-
-    def block_line(name, series, unit, mode):
-        s5 = summarize_horizon(series, "5Y", mode=mode)
-        s1 = summarize_horizon(series, "1Y", mode=mode)
-        s6 = summarize_horizon(series, "6M", mode=mode)
-        sM = summarize_horizon(series, "1M", mode=mode)
-        last = safe_last(series)
-
-        def f_last():
-            if last is None:
-                return "n/a"
-            if unit == "%":
-                return f"{last:.2f}%"
-            if abs(last) < 10000:
-                return f"{last:.2f}"
-            return f"{last:,.0f}"
-
-        def f_ch(ss):
-            if not ss.get("ok"):
-                return "n/a"
-            ch = ss["change"]
-            if ch is None or (isinstance(ch, float) and np.isnan(ch)):
-                return "n/a"
-            if mode == "pct":
-                return f"{arrow_from(ch)} {ch:+.1f}% ({fmt_pos(ss['pos'])})"
-            return f"{arrow_from(ch)} {ch:+.2f} ({fmt_pos(ss['pos'])})"
-
-        return (
-            f"- **{name}** | last: **{f_last()}**\n"
-            f"  - 5Y: {f_ch(s5)}\n"
-            f"  - 1Y: {f_ch(s1)}\n"
-            f"  - 6M: {f_ch(s6)}\n"
-            f"  - 1M: {f_ch(sM)}"
-        )
-
-    md = []
-    md.append(f"# Macro Crypto Radar — Report\n")
-    md.append(f"_Generated: {now}_\n")
-    md.append("## Executive summary\n")
-    md.append(
-        "Questo report riassume le evidenze su 4 blocchi (Liquidità, Real rates, Risk sentiment, Conferme) "
-        "su **4 orizzonti**: **5Y / 1Y / 6M / 1M**. "
-        "L’obiettivo non è fare timing perfetto, ma leggere se il contesto sta migliorando o peggiorando.\n"
-    )
-
-    md.append("## 1) Liquidità\n")
-    md.append(block_line("WALCL (Fed balance sheet)", walcl, unit="", mode="abs"))
-    md.append(block_line("RRP (Reverse Repo)", rrp, unit="", mode="abs"))
-    md.append("\n**Lettura rapida:** WALCL stabile/in salita + RRP in calo è tipicamente più costruttivo per risk-on.\n")
-
-    md.append("\n## 2) Costo reale del denaro\n")
-    md.append(block_line("10Y Real Yield (DFII10)", dfii10, unit="%", mode="abs"))
-    md.append(block_line("Yield Curve 10Y–2Y (T10Y2Y)", t10y2y, unit="", mode="abs"))
-    md.append("\n**Lettura rapida:** real yield in discesa (specie 1M/6M) spesso apre la finestra risk-on; in salita è vento contrario.\n")
-
-    md.append("\n## 3) Risk sentiment\n")
-    md.append(block_line("DXY", dxy, unit="", mode="abs"))
-    md.append(block_line("VIX", vix, unit="", mode="abs"))
-    md.append("\n**Lettura rapida:** DXY debole + VIX contenuto supportano risk-on; USD forte o stress alto tendono a bloccare i rally.\n")
-
-    md.append("\n## 4) Crypto confirmation\n")
-    md.append(block_line("BTC", btc, unit="", mode="pct"))
-    md.append(block_line("BTC/Nasdaq RS", rs_series, unit="", mode="pct"))
-    md.append("\n**Lettura rapida:** RS in salita su 1M/6M è una conferma di leadership; RS in calo suggerisce prudenza.\n")
-
-    return "\n".join(md)
-
-section("Report generator", "Genera un report qualitativo su 5Y / 1Y / 6M / 1M + una sintesi per blocchi.")
-with st.markdown("<div class='card'>", unsafe_allow_html=True):
-    pass
-st.markdown("<div class='card'>", unsafe_allow_html=True)
-btn = st.button("Generate report", type="primary")
-if btn:
-    report_md = make_report()
-    st.markdown(report_md)
-    st.download_button("Download report (.md)", report_md, file_name="macro_crypto_report.md", mime="text/markdown")
-else:
-    st.caption("Premi “Generate report” per produrre la sintesi testuale. (Nessun costo extra: tutto local in Streamlit.)")
-st.markdown("</div>", unsafe_allow_html=True)
-
-st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
-
-# =========================
-# Regime score
+# Regime Score (per payload + vista)
 # =========================
 walcl_ok = None
 w = safe_series(walcl).dropna()
@@ -714,20 +465,20 @@ if len(w) > 10:
 
 rrp_trending_down = None
 r = safe_series(rrp).dropna()
-if len(r) > rrp_trend_days + 5:
-    rrp_ma = ma(r, rrp_trend_days).dropna()
+if len(r) > 25:
+    rrp_ma = ma(r, 20).dropna()
     if len(rrp_ma) > 2:
         rrp_trending_down = (rrp_ma.diff().dropna().iloc[-1] < 0)
 
 ry_ok_level = None if ry_last is None else (ry_last < real_yield_thr)
 ry_change_60d_bps_series = bp_change_n(safe_series(dfii10).dropna(), 60).dropna()
 ry_drop_60d_bps = None if len(ry_change_60d_bps_series) == 0 else float(ry_change_60d_bps_series.iloc[-1])
-ry_drop_fast = None if ry_drop_60d_bps is None else (ry_drop_60d_bps <= -float(ry_drop_bps))
+ry_drop_fast = None if ry_drop_60d_bps is None else (ry_drop_60d_bps <= -50.0)
 
 dxy_below_ma = None
 d = safe_series(dxy).dropna()
-if len(d) > dxy_ma_days + 10:
-    dxy_below_ma = (d.iloc[-1] < ma(d, dxy_ma_days).iloc[-1])
+if len(d) > 210:
+    dxy_below_ma = (d.iloc[-1] < ma(d, 200).iloc[-1])
 
 vix_ok = None if vix_last is None else (vix_last < vix_thr)
 
@@ -760,31 +511,23 @@ else:
 section("Stato (Regime)", "È contesto, non timing: serve per calibrare size e rischio.")
 s1, s2 = st.columns([1.1, 2.2])
 with s1:
-    fig = go.Figure(
-        go.Indicator(
-            mode="gauge+number",
-            value=float(regime_score),
-            number={"suffix": "/100"},
-            title={"text": "Regime Score"},
-            gauge={"axis": {"range": [0, 100]}},
-        )
-    )
+    fig = go.Figure(go.Indicator(mode="gauge+number", value=float(regime_score), number={"suffix": "/100"},
+                                 title={"text": "Regime Score"}, gauge={"axis": {"range": [0, 100]}}))
     fig.update_layout(height=260, margin=dict(l=10, r=10, t=40, b=10))
     st.plotly_chart(fig, use_container_width=True)
-
 with s2:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown(f"### {regime_label}")
     st.markdown(
         "\n".join(
             [
-                f"- Liquidità (WALCL trend): {pill(walcl_ok)}",
-                f"- Liquidità (RRP trend): {pill(rrp_trending_down)}",
+                f"- WALCL trend: {pill(walcl_ok)}",
+                f"- RRP trend: {pill(rrp_trending_down)}",
                 f"- Real yield < soglia: {pill(ry_ok_level)}",
                 f"- Real yield drop (60g): {pill(ry_drop_fast)}",
-                f"- DXY sotto MA{dxy_ma_days}: {pill(dxy_below_ma)}",
-                f"- VIX < {vix_thr:.1f}: {pill(vix_ok)}",
-                f"- BTC sovraperforma Nasdaq ({rs_days}g): {pill(btc_outperform)}",
+                f"- DXY sotto MA200: {pill(dxy_below_ma)}",
+                f"- VIX < soglia: {pill(vix_ok)}",
+                f"- BTC sovraperforma Nasdaq: {pill(btc_outperform)}",
             ]
         ),
         unsafe_allow_html=True,
@@ -794,60 +537,258 @@ with s2:
 st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
 
 # =========================
-# Sections (expander ABOVE charts)
+# Payload generator for ChatGPT (NEW)
 # =========================
-section(
-    "1) Liquidità",
-    "Carburante del sistema. WALCL stabile/in salita e RRP in calo tendono a rendere più sostenibile il risk-on; l’opposto è vento contrario."
-)
+REF = {
+    "WALCL": {
+        "metric": "Totale attivo della FED (proxy QE/QT).",
+        "good_bad": "Bene: trend stabile/in salita (QT rallenta/finisce). Meno bene: trend in calo persistente (QT).",
+        "notes": "Guarda il trend (settimane), non il singolo dato."
+    },
+    "RRP": {
+        "metric": "Reverse Repo: cash parcheggiato alla FED.",
+        "good_bad": "Bene: in calo sostenuto. Meno bene: stabile alto o in risalita.",
+        "notes": "È liquidità 'in panchina' che può rientrare."
+    },
+    "DFII10": {
+        "metric": "10Y Real Yield (TIPS): rendimento risk-free reale.",
+        "good_bad": "Bene: <~1.5–2% e/o in discesa. Meno bene: >~2% e/o in salita rapida.",
+        "notes": "Conta molto il delta (es. -50bps in 2 mesi)."
+    },
+    "T10Y2Y": {
+        "metric": "Spread 10Y–2Y: forma della curva e stance di policy.",
+        "good_bad": "Warning: inversione profonda. Più costruttivo: dis-inversione da tagli (non crisi).",
+        "notes": "È contesto macro, non timing diretto."
+    },
+    "DXY": {
+        "metric": "Dollar Index: forza USD (filtro condizioni finanziarie).",
+        "good_bad": "Bene per risk: USD debole / sotto trend. Meno bene: USD forte/in accelerazione.",
+        "notes": "Trend > livello."
+    },
+    "VIX": {
+        "metric": "Volatilità implicita equity USA (stress).",
+        "good_bad": "Risk-on: <~15; neutro: 15–20; risk-off: >~25.",
+        "notes": "Crypto raramente riparte con VIX alto."
+    },
+    "BTC": {
+        "metric": "Prezzo BTC spot (conferma).",
+        "good_bad": "Bene: sale con macro migliorativa. Meno bene: rally con macro avversa (fragile).",
+        "notes": "Non è driver primario nel framework."
+    },
+    "RS": {
+        "metric": "BTC/Nasdaq: forza relativa (leadership).",
+        "good_bad": "Bene: RS in salita (BTC sovraperforma). Meno bene: RS in calo.",
+        "notes": "Molto utile come conferma di regime."
+    }
+}
+
+def metric_pack(name, series, mode="abs"):
+    out = {"name": name}
+    out["as_of"] = last_date(series)
+    last = safe_last(series)
+    out["last"] = None if last is None else float(last)
+    for hz in ["1M", "6M", "1Y", "5Y"]:
+        out[hz] = summarize_horizon(series, hz, mode=mode)
+    return out
+
+def build_payload_text():
+    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+
+    payload = {
+        "generated": now,
+        "regime": {"score": float(regime_score), "label": regime_label},
+        "signals": {
+            "walcl_trend_ok": coerce_flag(walcl_ok),
+            "rrp_trending_down": coerce_flag(rrp_trending_down),
+            "real_yield_below_thr": coerce_flag(ry_ok_level),
+            "real_yield_drop_fast": coerce_flag(ry_drop_fast),
+            "dxy_below_ma200": coerce_flag(dxy_below_ma),
+            "vix_below_thr": coerce_flag(vix_ok),
+            "btc_outperforms_nasdaq": coerce_flag(btc_outperform),
+        },
+        "what_changed": df_wc.to_dict(orient="records") if len(df_wc) else [],
+        "reference_levels": REF,
+        "metrics": {
+            "WALCL": metric_pack("WALCL", walcl, mode="abs"),
+            "RRP": metric_pack("RRP", rrp, mode="abs"),
+            "DFII10": metric_pack("RealYield10Y", dfii10, mode="abs"),
+            "T10Y2Y": metric_pack("YieldCurve10Y2Y", t10y2y, mode="abs"),
+            "DXY": metric_pack("DXY", dxy, mode="abs"),
+            "VIX": metric_pack("VIX", vix, mode="abs"),
+            "BTC": metric_pack("BTC", btc, mode="pct"),
+            "RS": metric_pack("BTC_NASDAQ_RS", rs_series, mode="pct"),
+        },
+        "notes": {
+            "method": "RS uses Nasdaq forward-filled on BTC calendar; 1M deltas in what_changed use ~21 trading days proxy."
+        }
+    }
+
+    # render as a readable markdown block (instead of raw JSON)
+    def line_metric(key, label, unit="", pct=False):
+        m = payload["metrics"][key]
+        last = m["last"]
+        last_s = "n/a" if last is None else (f"{last:.2f}{unit}" if unit else f"{last:,.2f}")
+        def hz(h):
+            ss = m[h]
+            if not ss.get("ok"):
+                return "n/a"
+            ch = ss["change"]
+            pos = ss.get("pos")
+            if ch is None or (isinstance(ch, float) and np.isnan(ch)):
+                return "n/a"
+            if pct:
+                return f"{arrow_from(ch)} {ch:+.1f}% | {fmt_pos(pos)}"
+            return f"{arrow_from(ch)} {ch:+.2f}{unit} | {fmt_pos(pos)}"
+        return (
+            f"- **{label}** (last={last_s})\n"
+            f"  - 5Y: {hz('5Y')}\n"
+            f"  - 1Y: {hz('1Y')}\n"
+            f"  - 6M: {hz('6M')}\n"
+            f"  - 1M: {hz('1M')}"
+        )
+
+    txt = []
+    txt.append(f"## Macro Crypto Radar — Payload\nGenerated: {now}\n")
+    txt.append(f"### Regime\n- score: {payload['regime']['score']:.1f}/100\n- label: {payload['regime']['label']}\n")
+    txt.append("### Signals (ON/OFF)\n" + "\n".join([f"- {k}: {payload['signals'][k]}" for k in payload["signals"]]) + "\n")
+
+    txt.append("### What changed (7d/30d/1M)\n")
+    if payload["what_changed"]:
+        for row in payload["what_changed"]:
+            txt.append(f"- {row['Metric']}: last={row['Latest']} | 7d={row['Δ 7d']} | 30d={row['Δ 30d']} | 1M={row['Δ 1M']}")
+    else:
+        txt.append("- n/a")
+
+    txt.append("\n### Metrics summary (5Y/1Y/6M/1M)\n")
+    txt.append(line_metric("WALCL", "WALCL (Fed balance sheet)", unit="", pct=False))
+    txt.append(line_metric("RRP", "RRP (Reverse Repo)", unit="", pct=False))
+    txt.append(line_metric("DFII10", "10Y Real Yield", unit="%", pct=False))
+    txt.append(line_metric("T10Y2Y", "Yield Curve 10Y–2Y", unit="", pct=False))
+    txt.append(line_metric("DXY", "DXY", unit="", pct=False))
+    txt.append(line_metric("VIX", "VIX", unit="", pct=False))
+    txt.append(line_metric("BTC", "BTC", unit="", pct=True))
+    txt.append(line_metric("RS", "BTC/Nasdaq RS", unit="", pct=True))
+
+    txt.append("\n### Reference levels (definitions + good/bad)\n")
+    for k, v in REF.items():
+        txt.append(f"- **{k}**: {v['metric']} | {v['good_bad']} | Note: {v['notes']}")
+
+    txt.append("\n### Notes\n- " + payload["notes"]["method"])
+    return "\n".join(txt)
+
+section("Report payload (per ChatGPT)", "Genera un payload copiabile: lo incolli in ChatGPT e chiedi un report operativo.")
+st.markdown("<div class='card'>", unsafe_allow_html=True)
+
+colA, colB = st.columns([1, 1])
+with colA:
+    gen = st.button("Generate payload", type="primary")
+with colB:
+    st.caption("Suggerimento: genera payload → copia → incolla in ChatGPT con il prompt sotto.")
+
+payload_text = ""
+if gen:
+    payload_text = build_payload_text()
+    st.session_state["payload_text"] = payload_text
+else:
+    payload_text = st.session_state.get("payload_text", "")
+
+if payload_text:
+    st.text_area("Payload (copiami)", payload_text, height=320)
+    st.download_button("Download payload (.txt)", payload_text, file_name="macro_crypto_payload.txt", mime="text/plain")
+else:
+    st.info("Premi “Generate payload” per creare il testo copiabile.")
+
+st.markdown("</div>", unsafe_allow_html=True)
+
+# Prompt standard da usare in ChatGPT
+section("Prompt per ChatGPT (incolla dopo il payload)", "Usalo per ottenere lettura d’insieme + cambiamenti + implicazioni operative.")
+st.markdown("<div class='card'>", unsafe_allow_html=True)
+prompt = """Sei un macro strategist. Usa SOLO i dati nel payload qui sopra. Non inventare numeri.
+Scrivi un report in italiano, sobrio e operativo (no hype), con questa struttura:
+
+1) Executive summary (max 6 righe): cosa dice il regime e cosa è cambiato nel brevissimo (1M + what changed).
+2) Lettura per blocchi: Liquidità / Real rates / Risk sentiment / Crypto confirmation
+   - per ogni blocco: lungo(5Y), medio(1Y), breve(6M), brevissimo(1M)
+   - evidenzia: direzione, velocità del cambiamento e coerenza tra indicatori.
+3) “Cosa sta cambiando adesso e perché” (focus 1M + ultimi 7/30 giorni).
+4) Implicazioni operative:
+   - stance: prudente / base / aggressivo
+   - sizing e risk management coerenti col regime
+   - cosa deve cambiare per aumentare o ridurre rischio.
+5) Trigger da monitorare (3–5) per la prossima finestra (1–4 settimane).
+"""
+st.text_area("Prompt (copiami)", prompt, height=240)
+st.markdown("</div>", unsafe_allow_html=True)
+
+st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
+
+# =========================
+# Charts sections
+# =========================
+section("1) Liquidità", "Carburante del sistema: WALCL e RRP guidano il contesto di liquidità.")
 c1, c2 = st.columns(2)
 with c1:
-    expander_metric("WALCL", "WALCL", walcl, unit="", mode="abs")
+    with st.expander("📘 WALCL — definizione e livelli guida", expanded=False):
+        st.write(REF["WALCL"]["metric"])
+        st.write(REF["WALCL"]["good_bad"])
+        st.caption(REF["WALCL"]["notes"])
     chart_card(f"Fed Balance Sheet (WALCL) — {view_mode}", walcl_v, badge="Liquidity", kind="line")
 with c2:
-    expander_metric("RRP", "RRP", rrp, unit="", mode="abs")
+    with st.expander("📘 RRP — definizione e livelli guida", expanded=False):
+        st.write(REF["RRP"]["metric"])
+        st.write(REF["RRP"]["good_bad"])
+        st.caption(REF["RRP"]["notes"])
     chart_card(f"Reverse Repo (RRP) — {view_mode}", rrp_v, badge="Liquidity", kind="area")
 
 st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
 
-section(
-    "2) Costo reale del denaro",
-    "Filtro chiave. Real yield in salita rende il risk-free reale competitivo; in discesa (soprattutto su 1M/6M) spesso apre la finestra risk-on."
-)
+section("2) Costo reale del denaro", "Filtro #1: il real yield spesso decide quanto spazio c’è per crypto e growth.")
 c3, c4 = st.columns(2)
 with c3:
-    expander_metric("DFII10", "10Y Real Yield", dfii10, unit="%", mode="abs")
+    with st.expander("📘 Real Yield — definizione e livelli guida", expanded=False):
+        st.write(REF["DFII10"]["metric"])
+        st.write(REF["DFII10"]["good_bad"])
+        st.caption(REF["DFII10"]["notes"])
     chart_card("10Y Real Yield (DFII10) — Raw", dfii10_v, badge="Real Rates", kind="line")
 with c4:
-    expander_metric("T10Y2Y", "Yield Curve 10Y–2Y", t10y2y, unit="", mode="abs")
+    with st.expander("📘 Yield Curve — definizione e livelli guida", expanded=False):
+        st.write(REF["T10Y2Y"]["metric"])
+        st.write(REF["T10Y2Y"]["good_bad"])
+        st.caption(REF["T10Y2Y"]["notes"])
     chart_card("Yield Curve 10Y–2Y (T10Y2Y) — Raw", t10y2y_v, badge="Rates", kind="line")
 
 st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
 
-section(
-    "3) Risk sentiment",
-    "Filtri. DXY forte o VIX alto spesso bloccano i rally; DXY debole e VIX contenuto rendono il contesto più respirabile."
-)
+section("3) Risk sentiment", "Filtri: USD e stress possono bloccare o liberare il risk-on.")
 c5, c6 = st.columns(2)
 with c5:
-    expander_metric("DXY", "DXY", dxy, unit="", mode="abs")
+    with st.expander("📘 DXY — definizione e livelli guida", expanded=False):
+        st.write(REF["DXY"]["metric"])
+        st.write(REF["DXY"]["good_bad"])
+        st.caption(REF["DXY"]["notes"])
     chart_card(f"DXY — {view_mode}", dxy_v, badge="Risk Filter", kind="line")
 with c6:
-    expander_metric("VIX", "VIX", vix, unit="", mode="abs")
+    with st.expander("📘 VIX — definizione e livelli guida", expanded=False):
+        st.write(REF["VIX"]["metric"])
+        st.write(REF["VIX"]["good_bad"])
+        st.caption(REF["VIX"]["notes"])
     chart_card("VIX — Raw", vix_v, badge="Risk Filter", kind="line")
 
 st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
 
-section(
-    "4) Crypto confirmation",
-    "Conferme. BTC e soprattutto RS (BTC/Nasdaq) indicano leadership: RS in salita su più settimane è un segnale forte."
-)
+section("4) Crypto confirmation", "Conferme: BTC e forza relativa vs Nasdaq indicano leadership e qualità del risk-on.")
 c7, c8 = st.columns(2)
 with c7:
-    expander_metric("BTC", "BTC", btc, unit="", mode="pct")
+    with st.expander("📘 BTC — definizione e livelli guida", expanded=False):
+        st.write(REF["BTC"]["metric"])
+        st.write(REF["BTC"]["good_bad"])
+        st.caption(REF["BTC"]["notes"])
     chart_card(f"BTC — {view_mode}", btc_v, badge="Confirmation", kind="line")
 with c8:
-    expander_metric("RS", "BTC/Nasdaq RS", rs_series, unit="", mode="pct")
+    with st.expander("📘 BTC/Nasdaq RS — definizione e livelli guida", expanded=False):
+        st.write(REF["RS"]["metric"])
+        st.write(REF["RS"]["good_bad"])
+        st.caption(REF["RS"]["notes"])
     chart_card(f"BTC / Nasdaq (Relative Strength) — {view_mode if view_mode != 'Raw' else 'Raw'}", rs_v, badge="Confirmation", kind="line")
 
-st.caption("Tip: aggiungi ‘1M’ per il brevissimo; ‘6M/1Y/5Y’ per regime e contesto.")
+st.caption("Tip: Usa ‘1M’ per il brevissimo, e 6M/1Y/5Y per regime e contesto.")
