@@ -15,7 +15,6 @@ st.set_page_config(page_title="Macro Crypto Radar", layout="wide")
 TITLE = "Macro Crypto Radar"
 SUBTITLE = "Un radar macro per capire quando cambia il regime (liquidità → real rates → risk → conferme)."
 
-# ---------- CSS (premium, sober) ----------
 st.markdown(
     """
 <style>
@@ -77,34 +76,35 @@ Gli indicatori crypto sono usati come **conferma**, non come driver principale.
 """
 )
 
+FRED_BASE = "https://api.stlouisfed.org/fred/series/observations"
+
 
 # =========================
 # Helpers
 # =========================
-def safe_last(s: pd.Series):
-    if s is None:
-        return None
-    if isinstance(s, pd.DataFrame):
-        if s.shape[1] == 0:
-            return None
-        s = s.iloc[:, 0]
-    s2 = s.dropna()
-    if len(s2) == 0:
-        return None
-    return float(s2.iloc[-1])
+def safe_series(x):
+    """Accetta Series o DataFrame e torna Series (prima colonna)."""
+    if x is None:
+        return pd.Series(dtype=float)
+    if isinstance(x, pd.DataFrame):
+        if x.shape[1] == 0:
+            return pd.Series(dtype=float)
+        return x.iloc[:, 0]
+    return x
 
 
-def last_date(s: pd.Series):
-    if s is None:
+def safe_last(s):
+    s = safe_series(s).dropna()
+    if len(s) == 0:
         return None
-    if isinstance(s, pd.DataFrame):
-        if s.shape[1] == 0:
-            return None
-        s = s.iloc[:, 0]
-    s2 = s.dropna()
-    if len(s2) == 0:
+    return float(s.iloc[-1])
+
+
+def last_date(s):
+    s = safe_series(s).dropna()
+    if len(s) == 0:
         return None
-    return s2.index.max().date().isoformat()
+    return s.index.max().date().isoformat()
 
 
 def fmt(x, digits=2, suffix=""):
@@ -121,7 +121,7 @@ def bp_change_n(s: pd.Series, n: int):
     s2 = s.dropna()
     if len(s2) < n + 2:
         return pd.Series(dtype=float)
-    return (s2 - s2.shift(n)) * 100.0
+    return (s2 - s2.shift(n)) * 100.0  # 1pp=100bps
 
 
 def normalize_series(s: pd.Series, mode: str):
@@ -172,8 +172,7 @@ def cond_turns_true_dates(cond):
     if len(c) < 2:
         return []
     turned = (c.astype(int).diff() == 1).fillna(False)
-    mask = turned.to_numpy(dtype=bool)
-    return list(c.index[mask])
+    return list(c.index[turned.to_numpy(dtype=bool)])
 
 
 def coerce_flag(x):
@@ -216,9 +215,7 @@ def mean_flags(flags) -> float:
             vals.append(1.0)
         elif f is False:
             vals.append(0.0)
-    if len(vals) == 0:
-        return 0.0
-    return float(np.mean(vals))
+    return float(np.mean(vals)) if vals else 0.0
 
 
 def section(label: str, desc: str):
@@ -265,21 +262,12 @@ def chart_card(title: str, series: pd.Series, badge: str = "", kind: str = "line
 
 
 def trend_hint(s, days: int = 20, unit: str = ""):
-    """
-    Robust: accetta Series o DataFrame; restituisce freccia + delta.
-    """
-    if s is None:
-        return ""
-    if isinstance(s, pd.DataFrame):
-        if s.shape[1] == 0:
-            return ""
-        s = s.iloc[:, 0]
-    s2 = s.dropna()
-    if len(s2) < days + 2:
+    s = safe_series(s).dropna()
+    if len(s) < days + 2:
         return ""
     try:
-        a = float(s2.iloc[-1])
-        b = float(s2.iloc[-days])
+        a = float(s.iloc[-1])
+        b = float(s.iloc[-days])
     except Exception:
         return ""
     delta = a - b
@@ -289,36 +277,62 @@ def trend_hint(s, days: int = 20, unit: str = ""):
     return f"{arrow} {delta:+.2f} (≈{days}g)"
 
 
+def pct_hint(s, days: int = 20):
+    s = safe_series(s).dropna()
+    if len(s) < days + 2:
+        return ""
+    try:
+        a = float(s.iloc[-1])
+        b = float(s.iloc[-days])
+    except Exception:
+        return ""
+    if b == 0:
+        return ""
+    pct = (a / b - 1.0) * 100.0
+    arrow = "↑" if pct > 0 else ("↓" if pct < 0 else "→")
+    return f"{arrow} {pct:+.1f}% (≈{days}g)"
+
+
+def compute_rs(btc_close: pd.Series, nasdaq_close: pd.Series) -> pd.Series:
+    """
+    RS robusta:
+    - allinea Nasdaq sul calendario BTC
+    - forward-fill Nasdaq nei giorni non-trading (weekend)
+    """
+    btc_close = safe_series(btc_close).dropna()
+    nasdaq_close = safe_series(nasdaq_close).dropna()
+    if len(btc_close) == 0 or len(nasdaq_close) == 0:
+        return pd.Series(dtype=float)
+
+    # reindex Nasdaq su index BTC e forward-fill (weekend/holiday)
+    nasdaq_on_btc = nasdaq_close.reindex(btc_close.index).ffill()
+    rs = (btc_close / nasdaq_on_btc).dropna()
+    rs.name = "BTC/IXIC"
+    return rs
+
+
 # =========================
-# Detailed explanations
+# Explanations
 # =========================
 DETAIL = {
     "STATE": """
 ### Come leggere “Stato” e “Regime Score”
 - **Regime Score (0–100)** = media pesata di 4 blocchi:
-  - **Liquidità** (WALCL, RRP)  
-  - **Real rates** (real yield: livello + discesa rapida)  
-  - **Risk sentiment** (DXY, VIX)  
+  - **Liquidità** (WALCL, RRP)
+  - **Real rates** (Real Yield: livello + discesa rapida)
+  - **Risk sentiment** (DXY, VIX)
   - **Conferma crypto** (BTC/Nasdaq)
 
-**Cosa significa “RISK-OFF” qui**
-- Non è un “sell signal” automatico.
-- Vuol dire che **le condizioni macro/risk non sono (ancora) favorevoli**: i rally sono più fragili e il rischio di drawdown aumenta.
-
-**Cosa dovrebbe cambiare per passare verso risk-on**
-- Real yield che scende (soprattutto velocemente)  
-- DXY che perde trend  
-- VIX sotto soglia e stabile  
-- BTC che sovraperforma Nasdaq (conferma)
+**RISK-OFF qui non è un sell signal**: significa che la macro/risk non è (ancora) favorevole e i rally tendono ad essere più fragili.
 """,
-    "WALCL": "**WALCL:** trend ↑/stabile = più favorevole; trend ↓ = QT (vento contrario).",
-    "RRP": "**RRP:** in calo = liquidità che rientra; in aumento/stabile alto = meno ossigeno.",
-    "DFII10": "**Real yield:** se sale = kryptonite; se scende rapidamente = sollievo per risk-on.",
-    "T10Y2Y": "**Yield curve:** inversione profonda = warning; dis-inversione per tagli = costruttiva.",
-    "DXY": "**DXY:** USD forte = freno; USD debole = aiuto (filtro).",
-    "VIX": "**VIX:** basso = risk-on; alto = stress / risk-off.",
-    "BTC": "**BTC:** conferma; utile quando macro già ok.",
-    "RS": "**BTC/Nasdaq:** forza relativa; RS ↑ = leadership di BTC.",
+    "WALCL": "Trend ↑/stabile = più favorevole; trend ↓ = QT (vento contrario).",
+    "RRP": "In calo = liquidità che rientra; stabile alto = meno ossigeno.",
+    "DFII10": "Se sale = kryptonite; se scende rapidamente = sollievo per risk-on.",
+    "T10Y2Y": "Inversione profonda = warning; dis-inversione per tagli = più costruttiva.",
+    "DXY": "USD forte = freno; USD debole = aiuto (filtro).",
+    "VIX": "Basso = risk-on; alto = stress / risk-off.",
+    "BTC": "Conferma, non driver primario.",
+    "RS": "Forza relativa: RS ↑ = BTC sovraperforma Nasdaq (leadership).",
 }
 
 
@@ -332,7 +346,7 @@ def expl_expander(key: str, title: str = "📌 Spiegazione (apri/chiudi)"):
 # =========================
 def fred_series(series_id: str, api_key: str) -> pd.Series:
     r = requests.get(
-        "https://api.stlouisfed.org/fred/series/observations",
+        FRED_BASE,
         params={"series_id": series_id, "api_key": api_key, "file_type": "json"},
         timeout=30,
     )
@@ -405,10 +419,28 @@ if not fred_key:
 # =========================
 walcl, dfii10, rrp, t10y2y = load_macro(fred_key)
 
-dxy, _ = yf_close_try(["DX-Y.NYB", "^DXY"], period="5y")
-vix, _ = yf_close_try(["^VIX"], period="5y")
-ixic, _ = yf_close_try(["^IXIC"], period="5y")
-btc, _ = yf_close_try(["BTC-USD"], period="5y")
+dxy, dxy_used = yf_close_try(["DX-Y.NYB", "^DXY"], period="5y")
+vix, vix_used = yf_close_try(["^VIX"], period="5y")
+ixic, ixic_used = yf_close_try(["^IXIC"], period="5y")
+btc, btc_used = yf_close_try(["BTC-USD"], period="5y")
+
+warn = []
+if dxy_used is None:
+    warn.append("DXY non disponibile (yfinance).")
+if vix_used is None:
+    warn.append("VIX non disponibile (yfinance).")
+if ixic_used is None:
+    warn.append("Nasdaq (^IXIC) non disponibile (yfinance) → RS BTC/Nasdaq non calcolabile.")
+if btc_used is None:
+    warn.append("BTC-USD non disponibile (yfinance).")
+if warn:
+    st.warning(" ".join(warn))
+
+
+# =========================
+# Derived series: Relative Strength (robust)
+# =========================
+rs_series = compute_rs(btc, ixic)
 
 # =========================
 # View transforms for charts
@@ -420,6 +452,8 @@ t10y2y_v = normalize_series(slice_lookback(t10y2y, lookback), "Raw")
 dxy_v = normalize_series(slice_lookback(dxy, lookback), view_mode)
 vix_v = normalize_series(slice_lookback(vix, lookback), "Raw")
 btc_v = normalize_series(slice_lookback(btc, lookback), view_mode)
+rs_v = normalize_series(slice_lookback(rs_series, lookback), view_mode if view_mode != "Raw" else "Raw")
+
 
 # =========================
 # KPI premium
@@ -439,46 +473,138 @@ with kpi3:
 with kpi4:
     metric_card("VIX", fmt(vix_last, 2), "Basso = calma / risk-on", trend_hint(vix, 20, ""))
 
+# =========================
+# What changed block (NEW)
+# =========================
+def arrow(x):
+    if x is None or (isinstance(x, float) and np.isnan(x)):
+        return "→"
+    return "↑" if x > 0 else ("↓" if x < 0 else "→")
+
+
+def delta_abs(s: pd.Series, days: int):
+    s = safe_series(s).dropna()
+    if len(s) < days + 2:
+        return None
+    return float(s.iloc[-1]) - float(s.iloc[-days])
+
+
+def delta_pct(s: pd.Series, days: int):
+    s = safe_series(s).dropna()
+    if len(s) < days + 2:
+        return None
+    a = float(s.iloc[-1]); b = float(s.iloc[-days])
+    if b == 0:
+        return None
+    return (a / b - 1.0) * 100.0
+
+
+def what_changed_table():
+    rows = []
+
+    # WALCL in $B (WALCL = milioni di $)
+    walcl_7 = delta_abs(walcl, 7)
+    walcl_30 = delta_abs(walcl, 30)
+    walcl_last = safe_last(walcl)
+    if walcl_last is not None:
+        walcl_last_b = walcl_last / 1000.0
+        walcl_7_b = None if walcl_7 is None else walcl_7 / 1000.0
+        walcl_30_b = None if walcl_30 is None else walcl_30 / 1000.0
+        rows.append(("WALCL (Fed balance sheet)", f"{walcl_last_b:,.0f}B", f"{arrow(walcl_7_b)} {walcl_7_b:+,.0f}B" if walcl_7_b is not None else "n/a",
+                    f"{arrow(walcl_30_b)} {walcl_30_b:+,.0f}B" if walcl_30_b is not None else "n/a"))
+
+    # RRP (unità FRED spesso in milioni)
+    rrp_7 = delta_abs(rrp, 7)
+    rrp_30 = delta_abs(rrp, 30)
+    if rrp_last is not None:
+        rows.append(("RRP", f"{rrp_last:,.0f}", f"{arrow(rrp_7)} {rrp_7:+,.0f}" if rrp_7 is not None else "n/a",
+                    f"{arrow(rrp_30)} {rrp_30:+,.0f}" if rrp_30 is not None else "n/a"))
+
+    # Real yield in bps
+    ry_7 = delta_abs(dfii10, 7)
+    ry_30 = delta_abs(dfii10, 30)
+    if ry_last is not None:
+        rows.append(("10Y Real Yield", f"{ry_last:.2f}%", f"{arrow(ry_7)} {ry_7*100:+.0f} bps" if ry_7 is not None else "n/a",
+                    f"{arrow(ry_30)} {ry_30*100:+.0f} bps" if ry_30 is not None else "n/a"))
+
+    # DXY abs + pct could be noisy; show abs
+    dxy_7 = delta_abs(dxy, 7)
+    dxy_30 = delta_abs(dxy, 30)
+    if dxy_last is not None:
+        rows.append(("DXY", f"{dxy_last:.2f}", f"{arrow(dxy_7)} {dxy_7:+.2f}" if dxy_7 is not None else "n/a",
+                    f"{arrow(dxy_30)} {dxy_30:+.2f}" if dxy_30 is not None else "n/a"))
+
+    # VIX abs
+    vix_7 = delta_abs(vix, 7)
+    vix_30 = delta_abs(vix, 30)
+    if vix_last is not None:
+        rows.append(("VIX", f"{vix_last:.2f}", f"{arrow(vix_7)} {vix_7:+.2f}" if vix_7 is not None else "n/a",
+                    f"{arrow(vix_30)} {vix_30:+.2f}" if vix_30 is not None else "n/a"))
+
+    # BTC % (più utile)
+    btc_last = safe_last(btc)
+    btc_7p = delta_pct(btc, 7)
+    btc_30p = delta_pct(btc, 30)
+    if btc_last is not None:
+        rows.append(("BTC", f"{btc_last:,.0f}", f"{arrow(btc_7p)} {btc_7p:+.1f}%" if btc_7p is not None else "n/a",
+                    f"{arrow(btc_30p)} {btc_30p:+.1f}%" if btc_30p is not None else "n/a"))
+
+    # RS % (se disponibile)
+    rs_last = safe_last(rs_series)
+    rs_7p = delta_pct(rs_series, 7)
+    rs_30p = delta_pct(rs_series, 30)
+    if rs_last is not None:
+        rows.append(("BTC/Nasdaq RS", f"{rs_last:.4f}", f"{arrow(rs_7p)} {rs_7p:+.2f}%" if rs_7p is not None else "n/a",
+                    f"{arrow(rs_30p)} {rs_30p:+.2f}%" if rs_30p is not None else "n/a"))
+
+    return pd.DataFrame(rows, columns=["Metric", "Latest", "Δ 7d", "Δ 30d"])
+
+
+section("What changed", "Snapshot sintetico di come si sono mossi i driver principali (7 e 30 giorni).")
+st.markdown("<div class='card'>", unsafe_allow_html=True)
+df_wc = what_changed_table()
+if len(df_wc) == 0:
+    st.info("Dati insufficienti per calcolare le variazioni.")
+else:
+    st.dataframe(df_wc, use_container_width=True, hide_index=True)
+st.markdown("</div>", unsafe_allow_html=True)
+
 st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
 
+
 # =========================
-# Stato / Score
+# Stato / Score (come prima, leggero)
 # =========================
 walcl_ok = None
-w = walcl.dropna()
+w = safe_series(walcl).dropna()
 if len(w) > 10:
     back = min(60, len(w) - 1)
     walcl_ok = (w.iloc[-1] - w.iloc[-back]) >= 0
 
 rrp_trending_down = None
-r = rrp.dropna()
+r = safe_series(rrp).dropna()
 if len(r) > rrp_trend_days + 5:
     rrp_ma = ma(r, rrp_trend_days).dropna()
     if len(rrp_ma) > 2:
         rrp_trending_down = (rrp_ma.diff().dropna().iloc[-1] < 0)
 
 ry_ok_level = None if ry_last is None else (ry_last < real_yield_thr)
-ry_change_60d_bps_series = bp_change_n(dfii10.dropna(), 60).dropna()
+ry_change_60d_bps_series = bp_change_n(safe_series(dfii10).dropna(), 60).dropna()
 ry_drop_60d_bps = None if len(ry_change_60d_bps_series) == 0 else float(ry_change_60d_bps_series.iloc[-1])
 ry_drop_fast = None if ry_drop_60d_bps is None else (ry_drop_60d_bps <= -float(ry_drop_bps))
 
 dxy_below_ma = None
-d = dxy.dropna()
+d = safe_series(dxy).dropna()
 if len(d) > dxy_ma_days + 10:
     dxy_below_ma = (d.iloc[-1] < ma(d, dxy_ma_days).iloc[-1])
 
 vix_ok = None if vix_last is None else (vix_last < vix_thr)
 
 btc_outperform = None
-ratio = pd.Series(dtype=float)
-b = btc.dropna()
-# note: ixic not transformed for ratio, only raw
-ixic_raw = ixic.dropna() if isinstance(ixic, pd.Series) else pd.Series(dtype=float)
-if len(b) > rs_days + 10 and len(ixic_raw) > rs_days + 10:
-    ratio = (b / ixic_raw).dropna()
-    rs = ratio.pct_change(rs_days).dropna()
-    if len(rs) > 0:
-        btc_outperform = (float(rs.iloc[-1]) > 0)
+if len(rs_series.dropna()) > rs_days + 10:
+    rs_mom = rs_series.dropna().pct_change(rs_days).dropna()
+    if len(rs_mom) > 0:
+        btc_outperform = float(rs_mom.iloc[-1]) > 0
 
 liquidity_score = mean_flags([walcl_ok, rrp_trending_down])
 realrates_score = mean_flags([ry_ok_level, ry_drop_fast])
@@ -527,7 +653,7 @@ with s2:
                 f"- Real yield drop (60g): {pill(ry_drop_fast)}",
                 f"- DXY sotto MA{dxy_ma_days}: {pill(dxy_below_ma)}",
                 f"- VIX < {vix_thr:.1f}: {pill(vix_ok)}",
-                f"- BTC RS ({rs_days}g): {pill(btc_outperform)}",
+                f"- BTC sovraperforma Nasdaq ({rs_days}g): {pill(btc_outperform)}",
             ]
         ),
         unsafe_allow_html=True,
@@ -537,7 +663,7 @@ with s2:
 st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
 
 # =========================
-# Sections with expander ABOVE charts
+# Sections + expanders ABOVE charts
 # =========================
 section(
     "1) Liquidità",
@@ -593,11 +719,6 @@ with c7:
     chart_card(f"BTC — {view_mode}", btc_v, badge="Confirmation", kind="line")
 with c8:
     expl_expander("RS", "📌 BTC/Nasdaq: guida (apri/chiudi)")
-    if len(b) > 0 and len(ixic_raw) > 0:
-        ratio_chart = slice_lookback((b / ixic_raw).dropna(), lookback)
-        ratio_chart = normalize_series(ratio_chart, view_mode if view_mode != "Raw" else "Raw")
-    else:
-        ratio_chart = pd.Series(dtype=float)
-    chart_card(f"BTC / Nasdaq (Relative Strength) — {view_mode}", ratio_chart, badge="Confirmation", kind="line")
+    chart_card(f"BTC / Nasdaq (Relative Strength) — {view_mode if view_mode != 'Raw' else 'Raw'}", rs_v, badge="Confirmation", kind="line")
 
-st.caption("Tip: Index 100 per confrontare trend; Z-score per vedere quanto un indicatore è estremo vs storico.")
+st.caption("Tip: Index 100 per confrontare trend; Z-score per vedere se un indicatore è estremo vs storico.")
