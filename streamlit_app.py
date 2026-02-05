@@ -10,8 +10,23 @@ import yfinance as yf
 # =========================
 # Page
 # =========================
-st.set_page_config(page_title="Macro/Crypto Regime Dashboard", layout="wide")
-st.title("Macro → Risk → Crypto: Regime Dashboard")
+st.set_page_config(page_title="Macro Crypto Radar", layout="wide")
+
+TITLE = "Macro Crypto Radar"
+st.title(TITLE)
+
+st.markdown(
+    """
+Questa dashboard serve a **capire quando cambia il regime di mercato** (risk-on / risk-off) per crypto e asset risk.
+L’idea è semplice: il timing vero lo guidano **3 forze**:
+
+1) **Liquidità in USD** (quanto “carburante” c’è nel sistema)  
+2) **Costo reale del denaro** (real yield: la kryptonite quando sale)  
+3) **Propensione al rischio sistemica** (stress o calma sui mercati)
+
+Gli indicatori “crypto-specific” hanno senso **solo dopo** che macro e risk sono allineati: qui li usiamo come **conferma**, non come guida primaria.
+"""
+)
 
 FRED_BASE = "https://api.stlouisfed.org/fred/series/observations"
 
@@ -48,17 +63,14 @@ def ma(s: pd.Series, n: int):
 
 
 def bp_change_n(s: pd.Series, n: int):
-    # assumes series in percent points; 1.00 = 1%
+    # series in percent points; 1.00 = 1%
     s2 = s.dropna()
     if len(s2) < n + 2:
         return pd.Series(dtype=float)
-    return (s2 - s2.shift(n)) * 100.0  # percent points -> bps (1pp=100bps)
+    return (s2 - s2.shift(n)) * 100.0  # 1pp=100bps
 
 
 def normalize_series(s: pd.Series, mode: str):
-    """
-    mode: "Raw", "Index 100", "Z-score"
-    """
     s = s.dropna()
     if len(s) == 0:
         return s
@@ -96,10 +108,6 @@ def slice_lookback(s: pd.Series, lookback: str):
 
 
 def cond_turns_true_dates(cond: pd.Series):
-    """
-    cond: boolean series indexed by date.
-    Returns dates where it switches False->True
-    """
     if cond is None or len(cond) == 0:
         return []
     c = cond.dropna().astype(bool)
@@ -109,22 +117,66 @@ def cond_turns_true_dates(cond: pd.Series):
     return list(c.index[turned.fillna(False)])
 
 
+def coerce_flag(x):
+    """
+    Normalizza qualunque input in True / False / None.
+    Evita i crash "truth value of a Series is ambiguous".
+    """
+    if x is None:
+        return None
+
+    # pandas Series -> prendiamo ultimo valore
+    if isinstance(x, pd.Series):
+        x = x.dropna()
+        if len(x) == 0:
+            return None
+        x = x.iloc[-1]
+
+    # numpy scalar -> python scalar
+    if hasattr(x, "item") and not isinstance(x, (bool, int, float, str)):
+        try:
+            x = x.item()
+        except Exception:
+            pass
+
+    # NaN -> None
+    try:
+        if isinstance(x, float) and np.isnan(x):
+            return None
+    except Exception:
+        pass
+
+    if x is True:
+        return True
+    if x is False:
+        return False
+
+    # numeri -> bool
+    if isinstance(x, (int, float, np.integer, np.floating)):
+        return bool(x)
+
+    # fallback
+    try:
+        return bool(x)
+    except Exception:
+        return None
+
+
+def flag_icon(x):
+    x = coerce_flag(x)
+    if x is None:
+        return "n/a"
+    return "✅" if x else "—"
+
+
 def mean_flags(flags) -> float:
-    """
-    flags: list di True/False/None
-    - True  -> 1
-    - False -> 0
-    - None  -> ignorato
-    Se sono tutti None -> 0
-    """
     vals = []
     for f in flags:
+        f = coerce_flag(f)
         if f is True:
             vals.append(1.0)
         elif f is False:
             vals.append(0.0)
-        else:
-            continue
     if len(vals) == 0:
         return 0.0
     return float(np.mean(vals))
@@ -151,21 +203,17 @@ def fred_series(series_id: str, api_key: str) -> pd.Series:
 
 @st.cache_data(ttl=60 * 60)
 def load_macro(fred_key: str):
-    walcl = fred_series("WALCL", fred_key)       # Fed balance sheet
-    dfii10 = fred_series("DFII10", fred_key)     # 10Y real yield (TIPS)
-    rrp = fred_series("RRPONTSYD", fred_key)     # Reverse repo
-    t10y2y = fred_series("T10Y2Y", fred_key)     # 10Y-2Y spread
+    walcl = fred_series("WALCL", fred_key)
+    dfii10 = fred_series("DFII10", fred_key)
+    rrp = fred_series("RRPONTSYD", fred_key)
+    t10y2y = fred_series("T10Y2Y", fred_key)
     return walcl, dfii10, rrp, t10y2y
 
 
 @st.cache_data(ttl=60 * 30)
 def yf_close_try(tickers, period="5y"):
-    """
-    tickers: lista di ticker in ordine di preferenza
-    ritorna (serie, ticker_usato) oppure (serie vuota, None)
-    """
     for t in tickers:
-        for _ in range(2):  # retry
+        for _ in range(2):
             try:
                 df = yf.download(
                     t,
@@ -196,16 +244,16 @@ with st.sidebar:
 
     st.divider()
     st.subheader("Soglie semafori")
-    real_yield_thr = st.slider("Real Yield: soglia risk-on (%, sotto è meglio)", 0.0, 4.0, 1.75, 0.05)
-    vix_thr = st.slider("VIX: soglia risk-on (sotto è meglio)", 10.0, 40.0, 20.0, 0.5)
-    rrp_trend_days = st.slider("RRP trend: finestra (giorni, MA)", 5, 60, 20, 1)
-    dxy_ma_days = st.slider("DXY filtro: MA (giorni)", 50, 300, 200, 10)
-    rs_days = st.slider("BTC vs Nasdaq: lookback forza relativa (giorni)", 10, 90, 30, 1)
+    real_yield_thr = st.slider("Real Yield risk-on (%, sotto è meglio)", 0.0, 4.0, 1.75, 0.05)
+    vix_thr = st.slider("VIX risk-on (sotto è meglio)", 10.0, 40.0, 20.0, 0.5)
+    rrp_trend_days = st.slider("RRP trend (giorni, MA)", 5, 60, 20, 1)
+    dxy_ma_days = st.slider("DXY filtro MA (giorni)", 50, 300, 200, 10)
+    rs_days = st.slider("BTC vs Nasdaq RS (giorni)", 10, 90, 30, 1)
 
     st.divider()
-    st.subheader("Alert / Trigger")
-    ry_drop_bps = st.slider("Trigger: Real Yield drop (bps) in 60g", 10, 150, 50, 5)
-    trigger_window_days = st.slider("Finestra 'Trigger recenti' (giorni)", 7, 90, 30, 1)
+    st.subheader("Trigger recenti")
+    ry_drop_bps = st.slider("Real Yield drop (bps) in 60g", 10, 150, 50, 5)
+    trigger_window_days = st.slider("Finestra trigger (giorni)", 7, 90, 30, 1)
 
 
 # =========================
@@ -244,22 +292,22 @@ if warnings:
 # View transforms for charts
 # =========================
 walcl_v = normalize_series(slice_lookback(walcl, lookback), view_mode)
-dfii10_v = normalize_series(slice_lookback(dfii10, lookback), "Raw")  # yields raw
+dfii10_v = normalize_series(slice_lookback(dfii10, lookback), "Raw")
 rrp_v = normalize_series(slice_lookback(rrp, lookback), view_mode)
-t10y2y_v = normalize_series(slice_lookback(t10y2y, lookback), "Raw")  # spread raw
+t10y2y_v = normalize_series(slice_lookback(t10y2y, lookback), "Raw")
 dxy_v = normalize_series(slice_lookback(dxy, lookback), view_mode)
-vix_v = normalize_series(slice_lookback(vix, lookback), "Raw")        # VIX raw
+vix_v = normalize_series(slice_lookback(vix, lookback), "Raw")
 ixic_v = normalize_series(slice_lookback(ixic, lookback), view_mode)
 btc_v = normalize_series(slice_lookback(btc, lookback), view_mode)
 
 
 # =========================
-# KPI row (raw)
+# KPI row
 # =========================
 k1, k2, k3, k4 = st.columns(4)
-k1.metric("Real Yield 10Y (DFII10)", fmt(safe_last(dfii10), 2, "%"))
+k1.metric("Real Yield 10Y", fmt(safe_last(dfii10), 2, "%"))
 last_rrp_val = safe_last(rrp)
-k2.metric("RRP (latest)", "n/a" if last_rrp_val is None else f"{last_rrp_val:,.0f}")
+k2.metric("RRP", "n/a" if last_rrp_val is None else f"{last_rrp_val:,.0f}")
 k3.metric("DXY", fmt(safe_last(dxy), 2))
 k4.metric("VIX", fmt(safe_last(vix), 2))
 
@@ -270,56 +318,44 @@ k4.metric("VIX", fmt(safe_last(vix), 2))
 EXPL = {
     "WALCL": (
         "**Fed Balance Sheet (WALCL)**\n\n"
-        "- **Cosa misura:** dimensione del bilancio FED.\n"
-        "- **Come leggerlo:** trend ↑ = più liquidità/meno drenaggio; trend ↓ = QT.\n"
-        "- **Implicazioni:** spesso costruttivo per asset risk quando smette di scendere o risale.\n"
+        "- Trend ↑ = più liquidità / meno drenaggio (costruttivo per risk-on)\n"
+        "- Trend ↓ = QT (vento contrario)\n"
     ),
     "RRP": (
         "**Reverse Repo (RRP)**\n\n"
-        "- **Cosa misura:** liquidità parcheggiata (cash che non va su asset risk).\n"
-        "- **Come leggerlo:** RRP che scende = potenziale liquidità che rientra nei mercati.\n"
-        "- **Implicazioni:** calo rapido è spesso positivo per risk-on.\n"
+        "- RRP che scende = liquidità che può tornare sui mercati\n"
+        "- Calo rapido spesso aiuta asset risk\n"
     ),
     "DFII10": (
-        "**10Y Real Yield (DFII10)**\n\n"
-        "- **Cosa misura:** rendimento reale risk-free (TIPS).\n"
-        "- **Come leggerlo:** real yield ↑ = competizione per asset risk; ↓ rapido = sollievo.\n"
-        "- **Implicazioni:** crypto tende a soffrire con real yield alti/in salita.\n"
+        "**10Y Real Yield (TIPS)**\n\n"
+        "- Se sale: il risk-free reale diventa competitivo (crypto soffre)\n"
+        "- Se scende rapidamente: sollievo e spazio per risk-on\n"
     ),
     "T10Y2Y": (
-        "**Yield Curve 10Y–2Y (T10Y2Y)**\n\n"
-        "- **Cosa misura:** forma della curva (stress/aspettative su crescita e policy).\n"
-        "- **Come leggerlo:** inversione profonda = warning; dis-inversione per tagli = spesso costruttiva.\n"
+        "**Yield Curve 10Y–2Y**\n\n"
+        "- Inversione profonda = warning\n"
+        "- Dis-inversione per tagli (non per crash) = più costruttiva\n"
     ),
     "DXY": (
-        "**DXY (Dollar Index)**\n\n"
-        "- **Cosa misura:** forza del dollaro vs basket.\n"
-        "- **Come leggerlo:** trend ↑ spesso frena asset risk; trend ↓ tende ad aiutare.\n"
-        "- **Implicazioni:** ottimo filtro: dollaro in accelerazione = risk-on più difficile.\n"
+        "**Dollaro (DXY)**\n\n"
+        "- Trend ↑ spesso frena asset risk\n"
+        "- Trend ↓ tende a favorire risk-on\n"
     ),
     "VIX": (
-        "**VIX**\n\n"
-        "- **Cosa misura:** stress/percezione del rischio.\n"
-        "- **Come leggerlo:** basso = risk-on; alto = risk-off.\n"
-        "- **Implicazioni:** crypto raramente riparte con VIX elevato.\n"
+        "**VIX (stress)**\n\n"
+        "- Basso = risk-on\n"
+        "- Alto = risk-off\n"
     ),
     "BTC": (
-        "**BTC (prezzo)**\n\n"
-        "- **Cosa misura:** prezzo spot.\n"
-        "- **Come leggerlo:** da solo non basta; diventa più utile come conferma quando la macro è favorevole.\n"
+        "**BTC**\n\n"
+        "- È conferma, non “segnale primario”\n"
     ),
     "RS": (
-        "**BTC / Nasdaq (Forza relativa)**\n\n"
-        "- **Cosa misura:** se BTC sta sovraperformando l’equity growth.\n"
-        "- **Come leggerlo:** RS ↑ mentre Nasdaq è flat/giù = segnale forte.\n"
-        "- **Implicazioni:** conferma “risk-on crypto” quando la macro è già ok.\n"
+        "**BTC / Nasdaq (forza relativa)**\n\n"
+        "- RS ↑ = BTC sovraperforma equity growth (buona conferma)\n"
     ),
 }
 
-
-# =========================
-# Data status table
-# =========================
 with st.expander("📦 Data status (ultimi aggiornamenti)", expanded=False):
     status_rows = [
         ("WALCL", "Fed Balance Sheet", last_date(walcl)),
@@ -335,13 +371,12 @@ with st.expander("📦 Data status (ultimi aggiornamenti)", expanded=False):
 
 
 # =========================
-# Signals + Score (robust)
+# Signals + Score
 # =========================
 # Liquidity
 walcl_ok = None
 w = walcl.dropna()
 if len(w) > 10:
-    # proxy: "non sta scendendo" negli ultimi ~8 settimane (qui usiamo 60 osservazioni come proxy robusto)
     back = min(60, len(w) - 1)
     walcl_ok = (w.iloc[-1] - w.iloc[-back]) >= 0
 
@@ -364,7 +399,7 @@ ry_drop_fast = None if ry_drop_60d_bps is None else (ry_drop_60d_bps <= -float(r
 dxy_below_ma = None
 d = dxy.dropna()
 if len(d) > dxy_ma_days + 10:
-    dxy_below_ma = d.iloc[-1] < ma(d, dxy_ma_days).iloc[-1]
+    dxy_below_ma = (d.iloc[-1] < ma(d, dxy_ma_days).iloc[-1])
 
 vix_last = safe_last(vix)
 vix_ok = None if vix_last is None else (vix_last < vix_thr)
@@ -378,15 +413,15 @@ if len(b) > rs_days + 10 and len(n) > rs_days + 10:
     ratio = (b / n).dropna()
     rs = ratio.pct_change(rs_days).dropna()
     if len(rs) > 0:
-        btc_outperform = float(rs.iloc[-1]) > 0
+        btc_outperform = (float(rs.iloc[-1]) > 0)
 
-# Component scores in [0,1]
+# Component scores
 liquidity_score = mean_flags([walcl_ok, rrp_trending_down])
 realrates_score = mean_flags([ry_ok_level, ry_drop_fast])
 risk_score = mean_flags([dxy_below_ma, vix_ok])
 crypto_score = mean_flags([btc_outperform])
 
-# Weights sum to 1
+# Weights
 W = {"liq": 0.30, "rr": 0.30, "risk": 0.25, "cr": 0.15}
 regime_score = 100.0 * (
     W["liq"] * liquidity_score
@@ -404,7 +439,7 @@ else:
 
 
 # =========================
-# Header: score + signals
+# Header: score + status + semafori
 # =========================
 s1, s2, s3 = st.columns([1.2, 1.2, 2.6])
 
@@ -426,16 +461,20 @@ with s2:
     st.markdown(f"### {regime_label}")
     st.caption("Score = media pesata dei blocchi: Liquidità, Real Rates, Risk, Conferma Crypto.")
     st.markdown(
-        f"- **Real yield**: {fmt(ry_last,2,'%')} | **Δ60g**: {('n/a' if ry_drop_60d_bps is None else f'{ry_drop_60d_bps:.0f} bps')}\n"
-        f"- **VIX**: {fmt(vix_last,2)}\n"
-        f"- **DXY sotto MA{dxy_ma_days}**: {('n/a' if dxy_below_ma is None else ('✅' if dxy_below_ma else '—'))}\n"
-        f"- **BTC RS ({rs_days}g)**: {('n/a' if btc_outperform is None else ('✅' if btc_outperform else '—'))}"
+        "\n".join(
+            [
+                f"- **Real yield**: {fmt(ry_last,2,'%')} | **Δ60g**: {('n/a' if ry_drop_60d_bps is None else f'{ry_drop_60d_bps:.0f} bps')}",
+                f"- **VIX**: {fmt(vix_last,2)}",
+                f"- **DXY sotto MA{dxy_ma_days}**: {flag_icon(dxy_below_ma)}",
+                f"- **BTC RS ({rs_days}g)**: {flag_icon(btc_outperform)}",
+            ]
+        )
     )
 
 with s3:
     st.subheader("Semafori (live)")
     signals = {
-        "WALCL (trend 8w proxy) ≥ 0": walcl_ok,
+        "WALCL (trend proxy) ≥ 0": walcl_ok,
         f"RRP MA{rrp_trend_days} in calo": rrp_trending_down,
         f"Real yield < {real_yield_thr:.2f}%": ry_ok_level,
         f"Real yield drop ≥ {ry_drop_bps} bps (60g)": ry_drop_fast,
@@ -444,13 +483,7 @@ with s3:
         f"BTC sovraperforma Nasdaq ({rs_days}g)": btc_outperform,
     }
     df_sig = pd.DataFrame(
-        {
-            "signal": list(signals.keys()),
-            "status": [
-                ("n/a" if v is None else ("ON ✅" if v else "OFF —"))
-                for v in signals.values()
-            ],
-        }
+        {"signal": list(signals.keys()), "status": [("n/a" if coerce_flag(v) is None else ("ON ✅" if coerce_flag(v) else "OFF —")) for v in signals.values()]}
     )
     st.dataframe(df_sig, use_container_width=True, height=240)
 
@@ -466,23 +499,23 @@ if len(dfii10.dropna()) > 120:
     ry_chg = bp_change_n(dfii10.dropna(), 60).dropna()
     if len(ry_chg) > 0:
         ry_cond = (ry_chg <= -float(ry_drop_bps)).dropna()
-        ry_trig_dates = [d for d in cond_turns_true_dates(ry_cond) if d >= recent_start]
+        ry_trig_dates = [dt for dt in cond_turns_true_dates(ry_cond) if dt >= recent_start]
         if len(ry_trig_dates) > 0:
             trigger_items.append(("Real yield drop (60g)", ry_trig_dates[-1].date().isoformat()))
 
-# WALCL trend >=0
+# WALCL slope >= 0
 if len(w) > 120:
     back = min(60, len(w) - 1)
     slope = (w - w.shift(back)).dropna()
     walcl_cond = (slope >= 0).dropna()
-    walcl_trig_dates = [d for d in cond_turns_true_dates(walcl_cond) if d >= recent_start]
+    walcl_trig_dates = [dt for dt in cond_turns_true_dates(walcl_cond) if dt >= recent_start]
     if len(walcl_trig_dates) > 0:
         trigger_items.append(("WALCL slope ≥ 0", walcl_trig_dates[-1].date().isoformat()))
 
 # DXY below MA
 if len(d) > dxy_ma_days + 30:
     cond = (d < ma(d, dxy_ma_days)).dropna()
-    dxy_trig_dates = [x for x in cond_turns_true_dates(cond) if x >= recent_start]
+    dxy_trig_dates = [dt for dt in cond_turns_true_dates(cond) if dt >= recent_start]
     if len(dxy_trig_dates) > 0:
         trigger_items.append((f"DXY sotto MA{dxy_ma_days}", dxy_trig_dates[-1].date().isoformat()))
 
@@ -490,7 +523,7 @@ if len(d) > dxy_ma_days + 30:
 vv = vix.dropna()
 if len(vv) > 30:
     cond = (vv < vix_thr).dropna()
-    vix_trig_dates = [x for x in cond_turns_true_dates(cond) if x >= recent_start]
+    vix_trig_dates = [dt for dt in cond_turns_true_dates(cond) if dt >= recent_start]
     if len(vix_trig_dates) > 0:
         trigger_items.append((f"VIX < {vix_thr:.1f}", vix_trig_dates[-1].date().isoformat()))
 
@@ -498,7 +531,7 @@ if len(vv) > 30:
 if len(ratio.dropna()) > rs_days + 30:
     rs = ratio.dropna().pct_change(rs_days).dropna()
     cond = (rs > 0).dropna()
-    rs_trig_dates = [x for x in cond_turns_true_dates(cond) if x >= recent_start]
+    rs_trig_dates = [dt for dt in cond_turns_true_dates(cond) if dt >= recent_start]
     if len(rs_trig_dates) > 0:
         trigger_items.append((f"BTC RS>0 ({rs_days}g)", rs_trig_dates[-1].date().isoformat()))
 
@@ -529,25 +562,25 @@ def chart_with_expl(title: str, series: pd.Series, expl_key: str, kind: str = "l
 b1, b2 = st.columns(2)
 
 with b1:
-    st.subheader("1) LIQUIDITÀ")
+    st.subheader("1) Liquidità")
     chart_with_expl(f"Fed Balance Sheet (WALCL) — {view_mode}", walcl_v, "WALCL", kind="line")
-    chart_with_expl(f"Reverse Repo (RRPONTSYD) — {view_mode}", rrp_v, "RRP", kind="area")
+    chart_with_expl(f"Reverse Repo (RRP) — {view_mode}", rrp_v, "RRP", kind="area")
 
 with b2:
-    st.subheader("2) COSTO REALE DEL DENARO")
-    chart_with_expl("10Y Real Yield (DFII10) — Raw", dfii10_v, "DFII10", kind="line")
-    chart_with_expl("Yield Curve 10Y–2Y (T10Y2Y) — Raw", t10y2y_v, "T10Y2Y", kind="line")
+    st.subheader("2) Costo del denaro")
+    chart_with_expl("10Y Real Yield — Raw", dfii10_v, "DFII10", kind="line")
+    chart_with_expl("Yield Curve 10Y–2Y — Raw", t10y2y_v, "T10Y2Y", kind="line")
 
 b3, b4 = st.columns(2)
 
 with b3:
-    st.subheader("3) RISK SENTIMENT")
+    st.subheader("3) Risk sentiment")
     chart_with_expl(f"DXY — {view_mode}", dxy_v, "DXY", kind="line")
     chart_with_expl("VIX — Raw", vix_v, "VIX", kind="line")
 
 with b4:
-    st.subheader("4) CRYPTO CONFIRMATION")
-    chart_with_expl(f"BTC (BTC-USD) — {view_mode}", btc_v, "BTC", kind="line")
+    st.subheader("4) Crypto confirmation")
+    chart_with_expl(f"BTC — {view_mode}", btc_v, "BTC", kind="line")
 
     rs_left, rs_right = st.columns([2.2, 1.0], vertical_alignment="top")
     with rs_left:
@@ -563,7 +596,4 @@ with b4:
     with rs_right:
         st.markdown(EXPL["RS"])
 
-st.caption(
-    "Tip: usa **Index 100** per confrontare trend su scale diverse; usa **Z-score** per vedere quanto un indicatore è estremo rispetto al suo passato."
-)
-
+st.caption("Tip: usa **Index 100** per confrontare trend su scale diverse; usa **Z-score** per vedere quanto un indicatore è estremo rispetto al suo passato.")
