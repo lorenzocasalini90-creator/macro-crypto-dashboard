@@ -107,15 +107,30 @@ def slice_lookback(s: pd.Series, lookback: str):
     return s.loc[s.index >= start]
 
 
-def cond_turns_true_dates(cond: pd.Series):
-    if cond is None or len(cond) == 0:
+def cond_turns_true_dates(cond):
+    """
+    cond: Series/DataFrame booleana indicizzata per data
+    ritorna le date in cui la condizione passa da False -> True
+    (robusta anche se cond è DataFrame).
+    """
+    if cond is None:
         return []
+
+    # Se arriva un DataFrame (anche a 1 colonna), lo "schiacciamo" a Series
+    if isinstance(cond, pd.DataFrame):
+        if cond.shape[1] == 0:
+            return []
+        cond = cond.iloc[:, 0]
+
     c = cond.dropna().astype(bool)
     if len(c) < 2:
         return []
-    turned = (c.astype(int).diff() == 1)
-    return list(c.index[turned.fillna(False)])
 
+    turned = (c.astype(int).diff() == 1).fillna(False)
+
+    # turned deve essere un array booleano 1D per indicizzare l'index
+    mask = turned.to_numpy(dtype=bool)
+    return list(c.index[mask])
 
 def coerce_flag(x):
     """
