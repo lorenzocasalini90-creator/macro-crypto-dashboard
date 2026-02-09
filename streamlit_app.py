@@ -8,10 +8,10 @@ from datetime import datetime, timedelta, timezone
 from pandas.tseries.offsets import DateOffset
 
 # ============================================================
-# PAGE CONFIG (mobile-first: readable on mobile + desktop)
+# PAGE CONFIG (mobile-first)
 # ============================================================
 st.set_page_config(
-    page_title="Global Markets Radar",
+    page_title="Crypto Macro Radar",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
@@ -25,7 +25,6 @@ st.markdown(
   :root{
     --bg:#0b0f19;
     --card:#0f1629;
-    --card2:#0c1324;
     --border:rgba(255,255,255,0.10);
     --muted:rgba(255,255,255,0.70);
     --text:rgba(255,255,255,0.94);
@@ -36,7 +35,7 @@ st.markdown(
 
     --accent:rgba(148,163,184,1);         /* sober slate */
     --accentSoft:rgba(148,163,184,0.16);
-    --accent2:rgba(99,102,241,1);         /* subtle indigo for highlights */
+    --accent2:rgba(99,102,241,1);         /* subtle indigo */
     --accent2Soft:rgba(99,102,241,0.14);
   }
 
@@ -45,7 +44,6 @@ st.markdown(
     color: var(--text);
   }
 
-  /* MOBILE-FIRST container: constrain width for readability */
   .block-container {
     padding-top: 1rem;
     padding-bottom: 2rem;
@@ -55,7 +53,7 @@ st.markdown(
   h1, h2, h3, h4 { color: var(--text); letter-spacing: -0.02em; }
   .muted { color: var(--muted); }
 
-  /* Tabs: readable + sober selected */
+  /* Tabs */
   button[data-baseweb="tab"]{
     color: rgba(255,255,255,0.90) !important;
     font-weight: 700 !important;
@@ -70,7 +68,7 @@ st.markdown(
     border: 1px solid rgba(148,163,184,0.45) !important;
   }
 
-  /* Expander: consistent */
+  /* Expander */
   div[data-testid="stExpander"]{
     border: 1px solid var(--border) !important;
     border-radius: 14px !important;
@@ -94,7 +92,6 @@ st.markdown(
     padding: 16px 16px 14px 16px;
     box-shadow: 0 10px 30px rgba(0,0,0,0.25);
   }
-
   .cardTitle{ font-size: 0.92rem; color: var(--muted); margin-bottom: 6px; }
   .cardValue{ font-size: 2.05rem; font-weight: 820; line-height: 1.05; color: var(--text); }
   .cardSub{ margin-top: 8px; font-size: 0.96rem; color: var(--muted); line-height: 1.25rem; }
@@ -105,7 +102,7 @@ st.markdown(
     margin: 14px 0 14px 0;
   }
 
-  /* Responsive grids: mobile-first */
+  /* Responsive grids */
   .grid2{ display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .grid3{ display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
   .grid4{ display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
@@ -139,7 +136,7 @@ st.markdown(
   .pill.bad { border-color: rgba(239,68,68,0.40); background: rgba(239,68,68,0.12); }
   .pill.info{ border-color: rgba(99,102,241,0.35); background: rgba(99,102,241,0.12); }
 
-  /* Section wrapper */
+  /* Section */
   .section{
     background: rgba(255,255,255,0.025);
     border: 1px solid var(--border);
@@ -209,388 +206,14 @@ st.markdown(
     box-shadow: 0 0 0 2px rgba(0,0,0,0.20);
   }
 
-  /* Dataframe tweaks */
   .stDataFrame { border: 1px solid var(--border); border-radius: 12px; overflow:hidden; }
   code { color: rgba(255,255,255,0.88); }
 
-  /* Small helper */
   .kpiRow{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
 </style>
 """,
     unsafe_allow_html=True,
 )
-
-# ============================================================
-# INDICATORS & BLOCKS
-# ============================================================
-
-INDICATOR_META = {
-    # 1) PRICE OF TIME
-    "real_10y": {
-        "label": "US 10Y TIPS Real Yield",
-        "unit": "%",
-        "direction": -1,
-        "source": "FRED DFII10",
-        "scale": 1.0,
-        "ref_line": 2.0,  # practical "restrictive-ish"
-        "scoring_mode": "z5y",
-        "expander": {
-            "what": "Real yield: il prezzo reale del denaro (discount rate reale).",
-            "reference": "<0% molto easy; 0–2% neutro; >2% restrittivo (euristiche).",
-            "interpretation": "- Real yield ↑: condizioni si stringono; soffrono duration lunga e equity growth.\n- Real yield ↓: allenta il vincolo; migliora la qualità del risk-on (se stress non esplode).",
-            "bridge": "Quando il rendimento reale risk-free è alto, il sistema ‘non ha bisogno’ di rischio per ottenere rendimento.",
-        },
-    },
-    "nominal_10y": {
-        "label": "US 10Y Nominal Yield",
-        "unit": "%",
-        "direction": -1,
-        "source": "FRED DGS10",
-        "scale": 1.0,
-        "ref_line": None,
-        "scoring_mode": "z5y",
-        "expander": {
-            "what": "Rendimento nominale 10Y: benchmark di sconto e proxy tightening.",
-            "reference": "Conta soprattutto la velocità: upside rapida = tightening (euristica).",
-            "interpretation": "- Yield ↑ veloce: pressione su equity e su bond già in portafoglio.\n- Yield ↓: supporto a duration; su equity dipende se è ‘good’ (disinflation) o ‘bad’ (growth scare).",
-            "bridge": "Muove la sensibilità dei multipli e la dinamica di carry/roll sui bond.",
-        },
-    },
-    "yield_curve_10_2": {
-        "label": "US Yield Curve (10Y–2Y)",
-        "unit": "pp",
-        "direction": +1,
-        "source": "FRED DGS10 - DGS2",
-        "scale": 1.0,
-        "ref_line": 0.0,
-        "scoring_mode": "z5y",
-        "expander": {
-            "what": "Pendenza curva 10–2: proxy ciclo / rischio recessivo.",
-            "reference": "<0 inversione (late cycle); >0 normalizzazione (euristica).",
-            "interpretation": "- Inversione profonda e persistente = warning.\n- Dis-inversione: bene se guidata da tagli (non da shock di crescita).",
-            "bridge": "Curva invertita = policy stretta vs ciclo → aumenta probabilità di deleveraging.",
-        },
-    },
-
-    # 2) MACRO CYCLE
-    "breakeven_10y": {
-        "label": "10Y Breakeven Inflation",
-        "unit": "%",
-        "direction": -1,
-        "source": "FRED T10YIE",
-        "scale": 1.0,
-        "ref_line": 3.0,
-        "scoring_mode": "z5y",
-        "expander": {
-            "what": "Inflazione attesa implicita dal mercato (10Y).",
-            "reference": "~2–3% ancorata; >3% = rischio sticky (euristica).",
-            "interpretation": "- Breakeven ↑: meno spazio per easing, term premium può salire.\n- Breakeven ↓/ancorata: supporta duration e risk budgeting.",
-            "bridge": "Se l’inflazione attesa si disancora, la policy diventa più vincolata.",
-        },
-    },
-    "cpi_yoy": {
-        "label": "US CPI YoY",
-        "unit": "%",
-        "direction": -1,
-        "source": "FRED CPIAUCSL (YoY)",
-        "scale": 1.0,
-        "ref_line": 3.0,
-        "scoring_mode": "z5y",
-        "expander": {
-            "what": "Inflazione headline YoY (proxy).",
-            "reference":  "2% target; >3–4% persistente = sticky risk (euristica).",
-            "interpretation": "- Disinflazione: favorisce duration e spesso equity.\n- Riaccelerazione: aumenta rischio 'higher for longer'.",
-            "bridge": "Inflazione persistente è il vincolo dominante per la politica monetaria.",
-        },
-    },
-    "unemployment_rate": {
-        "label": "US Unemployment Rate",
-        "unit": "%",
-        "direction": -1,
-        "source": "FRED UNRATE",
-        "scale": 1.0,
-        "ref_line": None,
-        "scoring_mode": "z5y",
-        "expander": {
-            "what": "Proxy slack nel mercato del lavoro.",
-            "reference": "Aumenti rapidi = segnali di rallentamento (euristica).",
-            "interpretation": "- Unemployment ↑ rapido: spesso risk-off (growth scare).\n- Stabilità: benigno.",
-            "bridge": "Slack + debito alto aumenta pressione per supporto policy/fiscale.",
-        },
-    },
-
-    # 3) CONDITIONS & STRESS
-    "usd_index": {
-        "label": "USD Strength (DXY / Broad)",
-        "unit": "",
-        "direction": -1,
-        "source": "yfinance DX-Y.NYB (fallback FRED DTWEXBGS)",
-        "scale": 1.0,
-        "ref_line": None,
-        "scoring_mode": "z5y",
-        "expander": {
-            "what": "Forza USD: filtro condizioni finanziarie globali.",
-            "reference": "USD ↑ = tightening globale (euristica).",
-            "interpretation": "- USD ↑: stress funding globale, spesso headwind per risk.\n- USD ↓: allenta condizioni e supporta risk-on.",
-            "bridge": "Molte passività globali sono USD-linked: USD forte = vincolo più duro.",
-        },
-    },
-    "hy_oas": {
-        "label": "US High Yield OAS",
-        "unit": "pp",
-        "direction": -1,
-        "source": "FRED BAMLH0A0HYM2",
-        "scale": 1.0,
-        "ref_line": 6.0,
-        "scoring_mode": "z5y",
-        "expander": {
-            "what": "Spread HY: stress credito / premio default.",
-            "reference": "<4% benigno; 4–6% warning; >6–7% stress (euristica).",
-            "interpretation": "- Spread ↑: risk-off (default premium e funding stress).\n- Spread ↓: risk appetite e carry più affidabile.",
-            "bridge": "Credito è spesso la ‘cinghia’ che trasmette stress all’equity.",
-        },
-    },
-    "vix": {
-        "label": "VIX",
-        "unit": "",
-        "direction": -1,
-        "source": "yfinance ^VIX",
-        "scale": 1.0,
-        "ref_line": 20.0,
-        "scoring_mode": "z5y",
-        "expander": {
-            "what": "Vol implicita equity USA (S&P).",
-            "reference": "<15 low; 15–25 normale; >25 stress (euristica).",
-            "interpretation": "- VIX ↑: premi al rischio salgono → tightening.\n- VIX ↓: facilita risk-taking.",
-            "bridge": "La vol può stringere condizioni anche senza rialzi tassi.",
-        },
-    },
-    "spy_trend": {
-        "label": "Equity Trend (SPY / 200D MA)",
-        "unit": "ratio",
-        "direction": +1,
-        "source": "yfinance SPY",
-        "scale": 1.0,
-        "ref_line": 1.0,
-        "scoring_mode": "z5y",
-        "expander": {
-            "what": "Trend proxy: SPY sopra/sotto la media 200 giorni.",
-            "reference": ">1 uptrend; <1 downtrend (euristica).",
-            "interpretation": "- Sopra 1: momentum e risk appetite più solidi.\n- Sotto 1: regime più difensivo.",
-            "bridge": "Trend down + credito che si allarga spesso segnala deleveraging.",
-        },
-    },
-    "hyg_lqd_ratio": {
-        "label": "Credit Risk Appetite (HYG / LQD)",
-        "unit": "ratio",
-        "direction": +1,
-        "source": "yfinance HYG, LQD",
-        "scale": 1.0,
-        "ref_line": None,
-        "scoring_mode": "z5y",
-        "expander": {
-            "what": "HY vs IG: appetito per rischio credito.",
-            "reference": "Ratio ↑ = più appetite HY; ↓ = flight to quality.",
-            "interpretation": "- Ratio ↑: supporta risk-on.\n- Ratio ↓: qualità/bilanci solidi preferiti.",
-            "bridge": "È un termometro veloce dell’asset allocation del credito.",
-        },
-    },
-
-    # 4) LIQUIDITY / PLUMBING
-    "fed_balance_sheet": {
-        "label": "Fed Balance Sheet (WALCL)",
-        "unit": "bn USD",
-        "direction": +1,
-        "source": "FRED WALCL (millions → bn)",
-        "scale": 1.0 / 1000.0,
-        "ref_line": None,
-        "scoring_mode": "z5y",
-        "expander": {
-            "what": "Asset FED: proxy di QE/QT e liquidità di sistema.",
-            "reference": "Espansione = tailwind; contrazione = headwind (euristica).",
-            "interpretation": "- BS ↑: spesso facilita risk.\n- BS ↓: drena liquidità marginale.",
-            "bridge": "La ‘plumbing’ determina se i flussi alimentano o drenano risk assets.",
-        },
-    },
-    "rrp": {
-        "label": "Fed Overnight RRP",
-        "unit": "bn USD",
-        "direction": -1,
-        "source": "FRED RRPONTSYD",
-        "scale": 1.0,
-        "ref_line": 0.0,
-        "scoring_mode": "z5y",
-        "expander": {
-            "what": "Cash parcheggiato nel facility: liquidità non impiegata in risk.",
-            "reference": "RRP alto = liquidità ‘in panchina’; calo può rilasciare margine (euristica).",
-            "interpretation": "- RRP ↑: meno marginal liquidity.\n- RRP ↓: possibile tailwind tattico.",
-            "bridge": "Agisce spesso come valvola tattica di liquidità.",
-        },
-    },
-
-    # 5) STRUCTURAL: DEBT & FISCAL / POLICY LINK
-    "interest_payments": {
-        "label": "US Federal Interest Payments (Quarterly)",
-        "unit": "bn USD",
-        "direction": -1,
-        "source": "FRED A091RC1Q027SBEA",
-        "scale": 1.0,
-        "ref_line": None,
-        "scoring_mode": "pct20y",
-        "expander": {
-            "what": "Interessi pagati dal governo: pressione di debt-service.",
-            "reference": "Accelerazione = vincolo policy più duro (euristica).",
-            "interpretation": "- In aumento persistente: riduce flessibilità.\n- Stabilizzazione: vincolo meno stringente.",
-            "bridge": "Debt-service alto aumenta incentivi a policy funding-friendly.",
-        },
-    },
-    "federal_receipts": {
-        "label": "US Federal Current Receipts (Quarterly)",
-        "unit": "bn USD",
-        "direction": +1,
-        "source": "FRED FGRECPT",
-        "scale": 1.0,
-        "ref_line": None,
-        "scoring_mode": "pct20y",
-        "expander": {
-            "what": "Entrate federali: supporto alla capacità di servizio del debito.",
-            "reference": "Serve anche per il rapporto interest/receipts.",
-            "interpretation": "- Entrate ↑: migliora sostenibilità (ceteris paribus).\n- Entrate ↓: aumenta vincolo.",
-            "bridge": "Minore capacità di entrate rende più sensibile il funding.",
-        },
-    },
-    "interest_to_receipts": {
-        "label": "Debt Service Stress (Interest / Receipts)",
-        "unit": "ratio",
-        "direction": -1,
-        "source": "Derived",
-        "scale": 1.0,
-        "ref_line": None,
-        "scoring_mode": "pct20y",
-        "expander": {
-            "what": "Quota delle entrate assorbita dagli interessi: proxy vincolo fiscale.",
-            "reference": "Alto e in salita = vincolo politico crescente (euristica).",
-            "interpretation": "- Ratio ↑: meno spazio per manovra.\n- Ratio ↓: più margine.",
-            "bridge": "Se il vincolo fiscale cresce, aumenta probabilità di policy accomodante nel tempo.",
-        },
-    },
-    "deficit_gdp": {
-        "label": "Federal Surplus/Deficit (% of GDP)",
-        "unit": "%",
-        "direction": -1,
-        "source": "FRED FYFSGDA188S",
-        "scale": 1.0,
-        "ref_line": -3.0,
-        "scoring_mode": "pct20y",
-        "expander": {
-            "what": "Saldo fiscale (% PIL). Negativo = deficit.",
-            "reference": "Deficit ampi persistenti aumentano supply pressure (euristica).",
-            "interpretation": "- Più negativo: più supply → rischio term premium.\n- Meno negativo: allevia pressione.",
-            "bridge": "Supply pressure può ridurre qualità hedge dei bond nominali.",
-        },
-    },
-    "term_premium_10y": {
-        "label": "US 10Y Term Premium (ACM)",
-        "unit": "%",
-        "direction": -1,
-        "source": "FRED ACMTP10",
-        "scale": 1.0,
-        "ref_line": None,
-        "scoring_mode": "pct20y",
-        "expander": {
-            "what": "Term premium: compenso per detenere duration nominale.",
-            "reference": "Se sale, i long bond possono hedgiare meno (euristica).",
-            "interpretation": "- Term premium ↑: duration più rischiosa.\n- Term premium ↓: hedge quality migliora.",
-            "bridge": "Se sale per supply/funding, bond possono non proteggere equity drawdown.",
-        },
-    },
-
-    # 6) STRUCTURAL: EXTERNAL BALANCE
-    "current_account_gdp": {
-        "label": "US Current Account Balance (% of GDP)",
-        "unit": "%",
-        "direction": +1,
-        "source": "FRED USAB6BLTT02STSAQ",
-        "scale": 1.0,
-        "ref_line": 0.0,
-        "scoring_mode": "pct20y",
-        "expander": {
-            "what": "Vincolo di funding esterno: deficit = dipendenza da capitali esteri.",
-            "reference": "Più negativo = maggiore vulnerabilità con USD forte (euristica).",
-            "interpretation": "- Più negativo: vulnerabilità in tightening USD.\n- Verso 0: meno vincolo.",
-            "bridge": "Deficit esterni aumentano rischio quando condizioni USD stringono.",
-        },
-    },
-
-    # 7) GOLD
-    "gold": {
-        "label": "Gold (GLD)",
-        "unit": "",
-        "direction": -1,
-        "source": "yfinance GLD",
-        "scale": 1.0,
-        "ref_line": None,
-        "scoring_mode": "z5y",
-        "expander": {
-            "what": "Oro: domanda di hedge (policy/inflazione/tail-risk).",
-            "reference": "Rotture al rialzo spesso = hedge demand, non growth optimism (euristica).",
-            "interpretation": "- Gold ↑: hedge demand / real returns compressi.\n- Gold ↓ in bull equity: risk-on ‘pulito’.",
-            "bridge": "Aiuta quando il sistema cerca protezione da policy/funding risk.",
-        },
-    },
-}
-
-BLOCKS = {
-    "price_of_time": {
-        "name": "1) Price of Time",
-        "weight": 0.20,
-        "indicators": ["real_10y", "nominal_10y", "yield_curve_10_2"],
-        "desc": "Tassi e curva: costo del capitale e segnali late-cycle.",
-        "group": "Market Thermometers",
-    },
-    "macro": {
-        "name": "2) Macro Cycle",
-        "weight": 0.15,
-        "indicators": ["breakeven_10y", "cpi_yoy", "unemployment_rate"],
-        "desc": "Inflazione e crescita: vincolo alla reaction function.",
-        "group": "Market Thermometers",
-    },
-    "conditions": {
-        "name": "3) Conditions & Stress",
-        "weight": 0.22,
-        "indicators": ["usd_index", "hy_oas", "vix", "spy_trend", "hyg_lqd_ratio"],
-        "desc": "Regime veloce: USD, credito, vol, trend e risk appetite.",
-        "group": "Market Thermometers",
-    },
-    "plumbing": {
-        "name": "4) Liquidity / Plumbing",
-        "weight": 0.13,
-        "indicators": ["fed_balance_sheet", "rrp"],
-        "desc": "Liquidità di sistema: tailwind vs drain su risk assets.",
-        "group": "Market Thermometers",
-    },
-    "policy_link": {
-        "name": "5) Fiscal / Policy Constraint",
-        "weight": 0.20,
-        "indicators": ["interest_to_receipts", "deficit_gdp", "term_premium_10y", "interest_payments", "federal_receipts"],
-        "desc": "Debt service, deficit e term premium: vincolo funding/policy.",
-        "group": "Structural Constraints",
-    },
-    "external": {
-        "name": "6) External Balance",
-        "weight": 0.10,
-        "indicators": ["current_account_gdp"],
-        "desc": "Dipendenza dal funding estero: vulnerabilità in USD tightening.",
-        "group": "Structural Constraints",
-    },
-    "gold_block": {
-        "name": "7) Gold (hedge confirmation)",
-        "weight": 0.00,
-        "indicators": ["gold"],
-        "desc": "Conferma hedge demand / policy risk (informativo).",
-        "group": "Structural Constraints",
-    },
-}
 
 # ============================================================
 # DATA: FETCHERS
@@ -640,8 +263,7 @@ def fetch_yf_one(ticker: str, start_date: str) -> pd.Series:
         df = yf.Ticker(ticker).history(start=start_date, auto_adjust=True)
         if df is None or df.empty:
             return pd.Series(dtype=float)
-        col = "Close"
-        s = df[col].dropna()
+        s = df["Close"].dropna()
         s.index = pd.to_datetime(s.index).tz_localize(None) if getattr(s.index, "tz", None) else pd.to_datetime(s.index)
         return s
     except Exception:
@@ -655,7 +277,7 @@ def fetch_yf_many(tickers: list[str], start_date: str) -> dict:
     return out
 
 # ============================================================
-# SCORING (z5y vs pct20y)
+# SCORING + HELPERS
 # ============================================================
 
 def rolling_percentile_last(hist: pd.Series, latest: float) -> float:
@@ -679,8 +301,8 @@ def compute_indicator_score(series: pd.Series, direction: int, scoring_mode: str
         hist = s[s.index >= start]
         if len(hist) < 20:
             hist = s
-        p = rolling_percentile_last(hist, latest)  # 0..1
-        sig = (p - 0.5) * 4.0  # 0->-2, 0.5->0, 1->+2
+        p = rolling_percentile_last(hist, latest)
+        sig = (p - 0.5) * 4.0
     else:
         start = end - DateOffset(years=5)
         hist = s[s.index >= start]
@@ -788,27 +410,18 @@ def score_bar_html(score: float) -> str:
     """
 
 # ============================================================
-# PLOTTING (dark-friendly, minimal modebar)
+# PLOTTING
 # ============================================================
 
 def plot_premium(series: pd.Series, title: str, ref_line=None, height: int = 320):
     s = series.dropna()
     fig = go.Figure()
-    fig.add_trace(
-        go.Scatter(
-            x=s.index,
-            y=s.values,
-            mode="lines",
-            line=dict(width=2),
-            name=title,
-        )
-    )
+    fig.add_trace(go.Scatter(x=s.index, y=s.values, mode="lines", line=dict(width=2), name=title))
     if ref_line is not None:
         try:
             fig.add_hline(y=float(ref_line), line_width=1, line_dash="dot", opacity=0.7)
         except Exception:
             pass
-
     fig.add_annotation(
         xref="paper", yref="paper",
         x=0.01, y=0.98,
@@ -818,7 +431,6 @@ def plot_premium(series: pd.Series, title: str, ref_line=None, height: int = 320
         font=dict(size=14, color="rgba(255,255,255,0.95)"),
         bgcolor="rgba(0,0,0,0.0)"
     )
-
     fig.update_layout(
         height=height,
         margin=dict(l=10, r=10, t=22, b=10),
@@ -832,10 +444,207 @@ def plot_premium(series: pd.Series, title: str, ref_line=None, height: int = 320
     return fig
 
 # ============================================================
-# OPERATING LINES (ETF oriented, clearer + rationale)
+# CRYPTO-FOCUSED META (drivers of crypto sentiment)
 # ============================================================
 
-def operating_lines(block_scores: dict, indicator_scores: dict):
+INDICATOR_META = {
+    # 1) USD LIQUIDITY / PLUMBING
+    "fed_balance_sheet": {
+        "label": "Fed Balance Sheet (WALCL)",
+        "unit": "bn USD",
+        "direction": +1,
+        "source": "FRED WALCL (millions → bn)",
+        "scale": 1.0 / 1000.0,
+        "ref_line": None,
+        "scoring_mode": "z5y",
+        "expander": {
+            "what": "Totale asset FED: proxy QE/QT e liquidità di sistema (driver macro per asset risk, incl. crypto).",
+            "reference": "BS ↑ o QT che rallenta = tailwind; BS ↓ persistente = headwind (euristica).",
+            "interpretation": "- Fed BS ↑: più liquidità marginale → migliora sentiment su BTC/alt.\n- Fed BS ↓: drenaggio → crypto tende a fare fatica (soprattutto beta).",
+            "bridge": "Crypto è una ‘opzione’ sulla liquidità futura: la plumbing cambia il price action prima delle narrative.",
+        },
+    },
+    "rrp": {
+        "label": "Fed Overnight RRP",
+        "unit": "bn USD",
+        "direction": -1,
+        "source": "FRED RRPONTSYD",
+        "scale": 1.0,
+        "ref_line": 0.0,
+        "scoring_mode": "z5y",
+        "expander": {
+            "what": "Reverse Repo: liquidità parcheggiata nel facility (cash non in risk).",
+            "reference": "RRP ↓ rapido può liberare marginal liquidity (euristica).",
+            "interpretation": "- RRP ↑: meno liquidità ‘disponibile’ → crypto risk appetite tende a peggiorare.\n- RRP ↓: potenziale tailwind tattico su BTC/alt.",
+            "bridge": "Spesso è un ‘release valve’: quando scende, i mercati respirano.",
+        },
+    },
+
+    # 2) REAL COST OF MONEY (kryptonite)
+    "real_10y": {
+        "label": "US 10Y TIPS Real Yield",
+        "unit": "%",
+        "direction": -1,
+        "source": "FRED DFII10",
+        "scale": 1.0,
+        "ref_line": 2.0,
+        "scoring_mode": "z5y",
+        "expander": {
+            "what": "Real yield: rendimento reale risk-free. È spesso la ‘kryptonite’ per crypto.",
+            "reference": "0–2% neutro; >2% restrittivo; cali rapidi = risk-on crypto (euristiche).",
+            "interpretation": "- Real yield ↑: competizione forte del risk-free → crypto soffre.\n- Real yield ↓: allenta il vincolo → BTC/alt possono riprendere (se stress non esplode).",
+            "bridge": "Quando il risk-free reale rende molto, la domanda di rischio diminuisce.",
+        },
+    },
+    "nominal_10y": {
+        "label": "US 10Y Nominal Yield",
+        "unit": "%",
+        "direction": -1,
+        "source": "FRED DGS10",
+        "scale": 1.0,
+        "ref_line": None,
+        "scoring_mode": "z5y",
+        "expander": {
+            "what": "Yield nominale 10Y: proxy di tightening/discount rate (impatta soprattutto risk assets).",
+            "reference": "Conta il delta: rialzi rapidi spesso equivalgono a tightening (euristica).",
+            "interpretation": "- Yield ↑ veloce: pressione su risk assets → crypto tende a indebolirsi.\n- Yield ↓: supporta appetite (ma attenzione se è ‘growth scare’).",
+            "bridge": "Il repricing dei tassi spesso guida i drawdown crypto più delle narrative.",
+        },
+    },
+
+    # 3) USD FILTER (mandatory)
+    "usd_index": {
+        "label": "USD Strength (DXY / Broad)",
+        "unit": "",
+        "direction": -1,
+        "source": "yfinance DX-Y.NYB (fallback FRED DTWEXBGS)",
+        "scale": 1.0,
+        "ref_line": None,
+        "scoring_mode": "z5y",
+        "expander": {
+            "what": "Forza USD: filtro quasi obbligatorio per crypto (condizioni globali).",
+            "reference": "USD ↑ = tightening globale → spesso headwind per crypto; USD ↓ = respiro (euristica).",
+            "interpretation": "- USD ↑: funding stress globale → BTC/alt tendono a faticare.\n- USD ↓: condizioni più easy → supporto a crypto.",
+            "bridge": "Molte posizioni/leverage e flussi globali sono USD-sensitive.",
+        },
+    },
+
+    # 4) RISK APPETITE / STRESS (confirmation)
+    "vix": {
+        "label": "VIX",
+        "unit": "",
+        "direction": -1,
+        "source": "yfinance ^VIX",
+        "scale": 1.0,
+        "ref_line": 25.0,
+        "scoring_mode": "z5y",
+        "expander": {
+            "what": "Vol implicita equity: proxy stress sistemico. Crypto raramente riparte con VIX alto.",
+            "reference": "<15 benigno; 15–25 normale; >25 stress (euristica).",
+            "interpretation": "- VIX ↑: risk-off sistemico → crypto beta viene venduto.\n- VIX ↓: risk-taking più facile → crypto respira.",
+            "bridge": "Quando la vol sale, i risk budgets si restringono (anche su crypto).",
+        },
+    },
+    "hy_oas": {
+        "label": "US High Yield OAS",
+        "unit": "pp",
+        "direction": -1,
+        "source": "FRED BAMLH0A0HYM2",
+        "scale": 1.0,
+        "ref_line": 6.0,
+        "scoring_mode": "z5y",
+        "expander": {
+            "what": "Spread HY: stress credito (spesso anticipa o conferma risk-off).",
+            "reference": "<4% benigno; 4–6% warning; >6–7% stress (euristica).",
+            "interpretation": "- Spread ↑: funding/credit stress → crypto tende a soffrire.\n- Spread ↓: appetite e carry → supportive per risk assets.",
+            "bridge": "Credito che si rompe = deleveraging, e crypto di solito paga.",
+        },
+    },
+
+    # 5) EQUITY RELATIVE CONFIRMATION
+    "btc_price": {
+        "label": "BTC Price (BTC-USD)",
+        "unit": "",
+        "direction": +1,
+        "source": "yfinance BTC-USD",
+        "scale": 1.0,
+        "ref_line": None,
+        "scoring_mode": "z5y",
+        "expander": {
+            "what": "Prezzo BTC: utile come conferma, ma va letto insieme ai driver macro sopra.",
+            "reference": "Più importante il comportamento (trend/RS) che ‘il livello’.",
+            "interpretation": "- BTC ↑ con macro che migliora: bull ‘pulito’.\n- BTC ↑ con macro che peggiora: spesso fragile / squeeze-driven.",
+            "bridge": "Il punto è evitare FOMO: macro+stress ti dicono se la salita è sostenibile.",
+        },
+    },
+    "nasdaq": {
+        "label": "Nasdaq (QQQ)",
+        "unit": "",
+        "direction": +1,
+        "source": "yfinance QQQ",
+        "scale": 1.0,
+        "ref_line": None,
+        "scoring_mode": "z5y",
+        "expander": {
+            "what": "Equity risk proxy (tech) per confronto con BTC.",
+            "reference": "BTC che sovraperforma QQQ è un segnale forte (euristica).",
+            "interpretation": "- QQQ forte: risk-on generale.\n- QQQ debole con BTC forte: segnale di idiosincrasia crypto (molto interessante).",
+            "bridge": "Serve per capire se crypto sta ‘guidando’ o solo seguendo l’equity.",
+        },
+    },
+    "btc_vs_qqq": {
+        "label": "BTC / Nasdaq Relative Strength (BTC / QQQ)",
+        "unit": "ratio",
+        "direction": +1,
+        "source": "Derived (BTC-USD / QQQ)",
+        "scale": 1.0,
+        "ref_line": None,
+        "scoring_mode": "z5y",
+        "expander": {
+            "what": "Forza relativa BTC vs Nasdaq: conferma che crypto sta outperformando risk tradizionale.",
+            "reference": "RS ↑ per 2–3 settimane = segnale forte (euristica).",
+            "interpretation": "- RS ↑: domanda crypto ‘reale’ / leadership.\n- RS ↓: crypto segue o underperforma (meno convincente).",
+            "bridge": "Per timing: RS è una delle conferme migliori dopo macro/liquidità.",
+        },
+    },
+}
+
+BLOCKS = {
+    "liquidity": {
+        "name": "1) USD Liquidity / Plumbing",
+        "weight": 0.30,
+        "indicators": ["fed_balance_sheet", "rrp"],
+        "desc": "Il motore: liquidità USD e plumbing FED (tailwind/headwind per crypto).",
+        "group": "Macro Drivers",
+    },
+    "real_cost": {
+        "name": "2) Real Cost of Money",
+        "weight": 0.30,
+        "indicators": ["real_10y", "nominal_10y"],
+        "desc": "Il vincolo: real yields e tassi (kryptonite o supporto).",
+        "group": "Macro Drivers",
+    },
+    "filters": {
+        "name": "3) Stress & Filters",
+        "weight": 0.25,
+        "indicators": ["usd_index", "vix", "hy_oas"],
+        "desc": "Filtri obbligatori: USD, vol e credito per evitare falsi risk-on.",
+        "group": "Macro Drivers",
+    },
+    "crypto_confirm": {
+        "name": "4) Crypto Confirmation",
+        "weight": 0.15,
+        "indicators": ["btc_price", "btc_vs_qqq"],
+        "desc": "Conferme: BTC e forza relativa vs Nasdaq (leadership).",
+        "group": "Crypto Confirmation",
+    },
+}
+
+# ============================================================
+# CRYPTO OPERATING LINES (clear, not trading advice)
+# ============================================================
+
+def crypto_operating_lines(block_scores: dict, indicator_scores: dict):
     gs = block_scores.get("GLOBAL", {}).get("score", np.nan)
 
     def _sg(x):
@@ -843,89 +652,64 @@ def operating_lines(block_scores: dict, indicator_scores: dict):
             return np.nan
         return float(x)
 
-    cond = _sg(block_scores.get("conditions", {}).get("score", np.nan))
-    pot = _sg(block_scores.get("price_of_time", {}).get("score", np.nan))
-    macro = _sg(block_scores.get("macro", {}).get("score", np.nan))
-    policy = _sg(block_scores.get("policy_link", {}).get("score", np.nan))
+    liq = _sg(block_scores.get("liquidity", {}).get("score", np.nan))
+    cost = _sg(block_scores.get("real_cost", {}).get("score", np.nan))
+    filt = _sg(block_scores.get("filters", {}).get("score", np.nan))
+    conf = _sg(block_scores.get("crypto_confirm", {}).get("score", np.nan))
 
-    # Helpers
     def band(x):
-        if np.isnan(x):
-            return "n/a"
+        if np.isnan(x): return "n/a"
         if x >= 60: return "supportive"
         if x <= 40: return "adverse"
         return "mixed"
 
-    # Equity exposure
+    # Stance: BTC / Alt beta / Leverage / Risk mgmt
     if np.isnan(gs):
-        equity = "n/a"
-        equity_why = "Dati insufficienti."
+        stance = "n/a"
+        why = "Dati insufficienti."
     else:
-        if gs >= 65 and (not np.isnan(cond) and cond >= 55):
-            equity = "Increase (measured)"
-            equity_why = "Regime complessivamente supportive; stress/credito non stanno segnalando tightening marcato."
-        elif gs <= 40 or (not np.isnan(cond) and cond <= 40):
-            equity = "Reduce / de-risk"
-            equity_why = "Stress/condizioni avverse: priorità a proteggere downside."
+        if (liq >= 60) and (cost >= 55) and (filt >= 55):
+            stance = "Risk-on crypto (measured)"
+            why = "Liquidità favorevole + costo reale meno restrittivo + filtri (USD/vol/credito) non stressati."
+        elif (cost <= 40) or (filt <= 40):
+            stance = "De-risk / defensive"
+            why = "Real yields e/o stress filters avversi: crypto tende a soffrire (soprattutto beta e leverage)."
         else:
-            equity = "Neutral / selective"
-            equity_why = "Segnali misti: sizing disciplinato e preferenza per qualità."
+            stance = "Neutral / selective"
+            why = "Segnali misti: evitare FOMO, privilegiare qualità/liquidità e conferme."
 
-    # Duration
-    termp = _sg(indicator_scores.get("term_premium_10y", {}).get("score", np.nan))
-    infl = _sg(indicator_scores.get("cpi_yoy", {}).get("score", np.nan))
-
-    if (not np.isnan(termp) and termp <= 40) and (not np.isnan(infl) and infl <= 45):
-        duration = "Short/neutral (be cautious on long nominals)"
-        duration_why = "Term premium e/o inflazione non abbastanza benigni: hedge quality dei long bond può essere instabile."
-    elif (not np.isnan(pot) and pot <= 40) and (not np.isnan(infl) and infl <= 45) and (not np.isnan(termp) and termp >= 55):
-        duration = "Long (as hedge)"
-        duration_why = "Disinflazione + costo del capitale in miglioramento: duration torna hedge più pulito."
+    # Allocation-style hints
+    if not np.isnan(conf) and conf >= 60 and not np.isnan(liq) and liq >= 55:
+        btc_vs_alt = "BTC-leading (better quality risk)"
+        btc_vs_alt_why = "BTC strength + relative strength vs Nasdaq: domanda più ‘solida’."
+    elif not np.isnan(filt) and filt <= 40:
+        btc_vs_alt = "Prefer BTC / reduce alt beta"
+        btc_vs_alt_why = "Quando stress sale, alt beta underperforma."
     else:
-        duration = "Neutral / barbell"
-        duration_why = "Bilanciare rischio term-premium vs protezione in caso di growth scare."
+        btc_vs_alt = "Balanced"
+        btc_vs_alt_why = "Aspettare conferme (RS, stress che rientra)."
 
-    # Credit
-    hy = _sg(indicator_scores.get("hy_oas", {}).get("score", np.nan))
-    hyg = _sg(indicator_scores.get("hyg_lqd_ratio", {}).get("score", np.nan))
-    ds = _sg(indicator_scores.get("interest_to_receipts", {}).get("score", np.nan))
-
-    if (not np.isnan(hy) and hy <= 40) or (not np.isnan(hyg) and hyg <= 40) or (not np.isnan(ds) and ds <= 40):
-        credit = "IG > HY (reduce default/funding risk)"
-        credit_why = "Segnali di stress o flight-to-quality: evitare beta credito."
-    elif (not np.isnan(hy) and hy >= 60) and (not np.isnan(hyg) and hyg >= 60) and (np.isnan(policy) or policy >= 50):
-        credit = "Opportunistic HY (size disciplined)"
-        credit_why = "Carry appetibile e risk appetite presente; usare sizing e stop di regime."
+    # Leverage heuristic
+    vix_sc = indicator_scores.get("vix", {}).get("score", np.nan)
+    hy_sc = indicator_scores.get("hy_oas", {}).get("score", np.nan)
+    if (not np.isnan(vix_sc) and vix_sc <= 40) or (not np.isnan(hy_sc) and hy_sc <= 40):
+        lev = "Keep leverage low"
+        lev_why = "Stress premia alti: deleveraging risk."
     else:
-        credit = "Neutral (quality tilt)"
-        credit_why = "Segnali misti: preferire qualità e selettività."
+        lev = "Moderate (if disciplined)"
+        lev_why = "Nessun segnale dominante di stress; comunque sizing prudente."
 
-    # Hedges
-    usd = _sg(indicator_scores.get("usd_index", {}).get("score", np.nan))
-    gold = _sg(indicator_scores.get("gold", {}).get("score", np.nan))
-
-    if (not np.isnan(policy) and policy <= 40) and (np.isnan(macro) or macro <= 55):
-        hedges = "Gold / real-asset sleeve"
-        hedges_why = "Vincolo fiscale/policy più duro: hedge demand può aumentare."
-    elif (not np.isnan(usd) and usd <= 40) and (not np.isnan(cond) and cond <= 45):
-        hedges = "USD / cash-like"
-        hedges_why = "Funding stress: preferire liquidità e difesa."
-    elif (not np.isnan(gold) and gold <= 40):
-        hedges = "Keep small gold sleeve"
-        hedges_why = "Hedge demand in aumento: utile opzionalità."
-    else:
-        hedges = "Light hedges (balanced)"
-        hedges_why = "Nessun segnale dominante: hedges leggeri e tattici."
+    # Context
+    context = f"GLOBAL={band(gs)}, LIQ={band(liq)}, REAL_COST={band(cost)}, FILTERS={band(filt)}, CONFIRM={band(conf)}"
 
     return {
-        "Equity": {"stance": equity, "why": equity_why, "context": f"GLOBAL={band(gs)}, CONDITIONS={band(cond)}"},
-        "Duration": {"stance": duration, "why": duration_why, "context": f"PRICE_OF_TIME={band(pot)}, CPI={band(infl)}, TERM_PREM={band(termp)}"},
-        "Credit": {"stance": credit, "why": credit_why, "context": f"HY_OAS={band(hy)}, HYG/LQD={band(hyg)}"},
-        "Hedges": {"stance": hedges, "why": hedges_why, "context": f"USD={band(usd)}, POLICY={band(policy)}, GOLD={band(gold)}"},
+        "Crypto stance": {"stance": stance, "why": why, "context": context},
+        "BTC vs Alt beta": {"stance": btc_vs_alt, "why": btc_vs_alt_why, "context": f"CONFIRM={band(conf)}, FILTERS={band(filt)}"},
+        "Leverage": {"stance": lev, "why": lev_why, "context": f"VIX_score={band(vix_sc)}, HY_score={band(hy_sc)}"},
     }
 
 # ============================================================
-# ALERTS (threshold-based) + trigger detection
+# ALERTS / TRIGGERS
 # ============================================================
 
 def crossed_up(series: pd.Series, thresh: float) -> pd.Series:
@@ -947,38 +731,38 @@ def turned_true_dates(cond: pd.Series) -> list[pd.Timestamp]:
     if c.empty:
         return []
     turned = c & (~c.shift(1).fillna(False))
-    idx = c.index[turned.values]  # safe boolean mask
+    idx = c.index[turned.values]
     return list(pd.to_datetime(idx))
 
 def last_n_triggers(cond: pd.Series, since: pd.Timestamp) -> list[str]:
     dates = [d for d in turned_true_dates(cond) if d >= since]
     return [pd.to_datetime(d).date().isoformat() for d in dates[-6:]]
 
-def so_what_line(key: str, dwin: float, score: float, status: str) -> str:
-    # Deterministic, professional “so what” line (no AI)
-    # Uses direction convention + whether move is meaningful
-    meta = INDICATOR_META[key]
-    label = meta["label"]
-    direction = meta["direction"]
-    move = "" if np.isnan(dwin) else ("up" if dwin > 0 else "down" if dwin < 0 else "flat")
-    material = (not np.isnan(dwin)) and (abs(dwin) >= 3.0)  # heuristic
-    stance = status_label(status)
+def is_active(cond: pd.Series) -> bool:
+    c = cond.dropna()
+    if c.empty:
+        return False
+    return bool(c.iloc[-1])
 
-    # Map to implication: if direction = -1, "up" is worse; if +1, "up" is better
+def crypto_so_what_line(key: str, dwin: float) -> str:
+    meta = INDICATOR_META[key]
+    direction = meta["direction"]
     if np.isnan(dwin):
-        return f"{label}: movimento recente non quantificabile (serie/frequenza)."
+        return "Movimento recente non quantificabile (serie/frequenza)."
+
+    # if direction = -1, up is worse for crypto; if +1, up is better
     if direction == -1:
         if dwin > 0:
-            return f"{label} ↑: tende a stringere condizioni / aumentare vincoli (watch se persiste)."
+            return "↑ tende a peggiorare le condizioni per crypto (headwind)."
         if dwin < 0:
-            return f"{label} ↓: tende ad allentare condizioni / ridurre vincoli (supportivo se confermato)."
-        return f"{label} ~: nessun impulso evidente dal movimento recente."
+            return "↓ tende a migliorare le condizioni per crypto (tailwind)."
+        return "≈ nessun impulso evidente."
     else:
         if dwin > 0:
-            return f"{label} ↑: conferma risk appetite / normalizzazione (supportivo se stabile)."
+            return "↑ conferma demand/risk-on crypto (supportivo)."
         if dwin < 0:
-            return f"{label} ↓: segnala deterioramento appetite/condizioni (cautela se accelera)."
-        return f"{label} ~: nessun impulso evidente dal movimento recente."
+            return "↓ segnala perdita di momentum/leadership (cautela)."
+        return "≈ nessun impulso evidente."
 
 # ============================================================
 # WALLBOARD TILE
@@ -1035,52 +819,48 @@ def wallboard_tile(key: str, series: pd.Series, indicator_scores: dict):
         exp = meta["expander"]
         st.markdown(f"**What it is:** {exp.get('what','')}")
         st.markdown(f"**Reference levels / thresholds:** {exp.get('reference','')}")
-        st.markdown("**How to read it (bi-directional):**")
+        st.markdown("**How to read it (crypto lens):**")
         st.markdown(exp.get("interpretation", ""))
-        st.markdown(f"**Why it matters (funding/policy link):** {exp.get('bridge','')}")
+        st.markdown(f"**Why it matters for crypto:** {exp.get('bridge','')}")
 
 # ============================================================
-# REPORT PROMPT (PM/CIO style) — shorter but strict + actionable
+# REPORT PROMPT (crypto-focused)
 # ============================================================
 
 REPORT_PROMPT = """SYSTEM / ROLE
-You are a senior multi-asset macro strategist writing an internal PM/CIO note.
-You diagnose regime from *behavioral pricing + constraints* (no forecasts).
+You are a macro-driven crypto strategist writing an internal regime note.
+You diagnose the crypto regime using macro liquidity, real rates, USD, and system risk appetite.
+No narratives, no price predictions. Only what the indicators say.
 
 You receive a YAML payload with:
 - global score + block scores
-- indicator scores, latest values, and recent changes
+- indicator latest values, scores, and recent changes
 - active alerts + recent triggers
-- ETF-oriented operating lines
+- crypto operating lines
 
 RULES
 - Use ONLY data in payload (no speculation, no new indicators).
-- Be concise, professional, implementation-oriented.
-- Separate: Market Thermometers vs Structural Constraints.
-- Always include “So what” implications (Equity / Duration / Credit / Hedges).
-- Highlight what changed on 1M + 30d/7d.
+- Separate: Macro Drivers vs Crypto Confirmations.
+- Explain *why* the regime is Risk-on/Neutral/Risk-off for crypto.
+- Provide clear, professional “so what” (BTC vs alts, leverage discipline, risk budget).
 
 OUTPUT STRUCTURE (follow exactly)
-# Global Markets Regime Note
+# Crypto Macro Regime Note
 [Insert date]
 
 ## Executive summary (max 8 lines)
 ## What changed (1M focus, then 30d/7d)
-## Market Thermometers (fast)
-1) Price of Time
-2) Macro Cycle
-3) Conditions & Stress
-4) Liquidity / Plumbing
-## Structural Constraints (slow)
-5) Fiscal / Policy Constraint
-6) External Balance
-7) Gold (informational)
+## Macro Drivers (the engine)
+1) USD Liquidity / Plumbing
+2) Real Cost of Money
+3) Stress & Filters (USD, vol, credit)
+## Crypto Confirmation
+4) BTC & Relative Strength vs Nasdaq
 ## Active alerts & triggers (2–6 weeks)
-## ETF-oriented operating lines
-- Equity
-- Duration
-- Credit
-- Hedges
+## Operating lines (implementation)
+- Crypto stance
+- BTC vs Alt beta
+- Leverage
 ## Bottom line (one paragraph)
 """.strip()
 
@@ -1089,10 +869,11 @@ OUTPUT STRUCTURE (follow exactly)
 # ============================================================
 
 def main():
-    st.title("Global Markets Radar")
+    st.title("Crypto Macro Radar")
     st.markdown(
-        "<div class='muted'>Dashboard macro-finanziaria per leggere il regime globale e tradurlo in logica ETF (equity / duration / credit / hedges). "
-        "Obiettivo: capire <b>cosa guida</b> e <b>cosa cambia</b>, non ‘prevedere’.</div>",
+        "<div class='muted'>Dashboard <b>macro-driven</b> per monitorare i fondamentali che guidano il <b>sentiment crypto</b>: "
+        "liquidità USD, costo reale del denaro, filtri di stress (USD/vol/credito) e conferme (BTC e forza relativa vs Nasdaq). "
+        "Obiettivo: evitare FOMO e capire <b>quando il regime cambia</b>.</div>",
         unsafe_allow_html=True
     )
 
@@ -1102,16 +883,16 @@ def main():
         st.cache_data.clear()
         st.rerun()
 
-    years_back = st.sidebar.slider("History (years)", 5, 30, 15)
+    years_back = st.sidebar.slider("History (years)", 5, 30, 10)
     layout_mode = st.sidebar.selectbox("Layout mode", ["Auto", "Wallboard-first", "Deep dive-first"], index=0)
 
     st.sidebar.divider()
-    st.sidebar.subheader("Alert thresholds (heuristics)")
-    thr_real_yield = st.sidebar.slider("Real yield (DFII10) restrictive >", 0.0, 4.0, 2.0, 0.1)
-    thr_vix = st.sidebar.slider("VIX stress >", 10.0, 50.0, 25.0, 0.5)
+    st.sidebar.subheader("Crypto alert thresholds (heuristics)")
+    thr_real_yield = st.sidebar.slider("Real yield restrictive >", 0.0, 4.0, 2.0, 0.1)
+    thr_vix = st.sidebar.slider("VIX stress >", 10.0, 60.0, 25.0, 0.5)
     thr_hy = st.sidebar.slider("HY OAS stress >", 3.0, 12.0, 6.0, 0.25)
     dxy_ma_days = st.sidebar.slider("USD trend filter MA (days)", 50, 300, 200, 10)
-    spy_trend_thr = st.sidebar.slider("SPY trend threshold (SPY/MA200) <", 0.85, 1.10, 1.00, 0.01)
+    rs_days = st.sidebar.slider("BTC/QQQ RS confirmation window (days)", 10, 90, 30, 5)
 
     today = datetime.now(timezone.utc).date()
     start_date = (today - DateOffset(years=years_back)).date().isoformat()
@@ -1125,72 +906,23 @@ def main():
         fred = {
             "real_10y": fetch_fred_series("DFII10", start_date),
             "nominal_10y": fetch_fred_series("DGS10", start_date),
-            "dgs2": fetch_fred_series("DGS2", start_date),
-
-            "breakeven_10y": fetch_fred_series("T10YIE", start_date),
-            "cpi_index": fetch_fred_series("CPIAUCSL", start_date),
-            "unemployment_rate": fetch_fred_series("UNRATE", start_date),
-
             "hy_oas": fetch_fred_series("BAMLH0A0HYM2", start_date),
-            "usd_fred": fetch_fred_series("DTWEXBGS", start_date),
-
             "fed_balance_sheet": fetch_fred_series("WALCL", start_date),
             "rrp": fetch_fred_series("RRPONTSYD", start_date),
-
-            "interest_payments": fetch_fred_series("A091RC1Q027SBEA", start_date),
-            "federal_receipts": fetch_fred_series("FGRECPT", start_date),
-            "deficit_gdp": fetch_fred_series("FYFSGDA188S", start_date),
-            "term_premium_10y": fetch_fred_series("ACMTP10", start_date),
-
-            "current_account_gdp": fetch_fred_series("USAB6BLTT02STSAQ", start_date),
+            "usd_fred": fetch_fred_series("DTWEXBGS", start_date),
         }
 
         indicators = {}
 
-        # Derived: yield curve
-        if not fred["nominal_10y"].empty and not fred["dgs2"].empty:
-            yc = fred["nominal_10y"].to_frame("10y").join(fred["dgs2"].to_frame("2y"), how="inner")
-            indicators["yield_curve_10_2"] = (yc["10y"] - yc["2y"]).dropna()
-        else:
-            indicators["yield_curve_10_2"] = pd.Series(dtype=float)
-
-        # CPI YoY
-        if not fred["cpi_index"].empty:
-            indicators["cpi_yoy"] = (fred["cpi_index"].pct_change(12) * 100.0).dropna()
-        else:
-            indicators["cpi_yoy"] = pd.Series(dtype=float)
-
-        # Direct FRED
+        # FRED direct
         indicators["real_10y"] = fred["real_10y"]
         indicators["nominal_10y"] = fred["nominal_10y"]
-        indicators["breakeven_10y"] = fred["breakeven_10y"]
-        indicators["unemployment_rate"] = fred["unemployment_rate"]
-
         indicators["hy_oas"] = fred["hy_oas"]
         indicators["fed_balance_sheet"] = fred["fed_balance_sheet"]
         indicators["rrp"] = fred["rrp"]
 
-        indicators["interest_payments"] = fred["interest_payments"]
-        indicators["federal_receipts"] = fred["federal_receipts"]
-        indicators["deficit_gdp"] = fred["deficit_gdp"]
-        indicators["term_premium_10y"] = fred["term_premium_10y"]
-        indicators["current_account_gdp"] = fred["current_account_gdp"]
-
-        # Derived: interest / receipts ratio
-        ip = indicators.get("interest_payments", pd.Series(dtype=float))
-        fr = indicators.get("federal_receipts", pd.Series(dtype=float))
-        if (ip is not None and fr is not None) and (not ip.empty) and (not fr.empty):
-            join = ip.to_frame("interest").join(fr.to_frame("receipts"), how="inner").dropna()
-            join = join[join["receipts"] != 0]
-            indicators["interest_to_receipts"] = (join["interest"] / join["receipts"]).dropna()
-        else:
-            indicators["interest_to_receipts"] = pd.Series(dtype=float)
-
         # YFinance
-        yf_map = fetch_yf_many(
-            ["DX-Y.NYB", "^VIX", "SPY", "HYG", "LQD", "GLD"],
-            start_date
-        )
+        yf_map = fetch_yf_many(["DX-Y.NYB", "^VIX", "BTC-USD", "QQQ"], start_date)
 
         dxy = yf_map.get("DX-Y.NYB", pd.Series(dtype=float))
         if dxy is None or dxy.empty:
@@ -1198,23 +930,17 @@ def main():
         indicators["usd_index"] = dxy
 
         indicators["vix"] = yf_map.get("^VIX", pd.Series(dtype=float))
+        btc = yf_map.get("BTC-USD", pd.Series(dtype=float))
+        qqq = yf_map.get("QQQ", pd.Series(dtype=float))
+        indicators["btc_price"] = btc
+        indicators["nasdaq"] = qqq
 
-        spy = yf_map.get("SPY", pd.Series(dtype=float))
-        if spy is not None and not spy.empty:
-            ma200 = spy.rolling(200).mean()
-            indicators["spy_trend"] = (spy / ma200).dropna()
+        # Derived: BTC / QQQ RS
+        if btc is not None and qqq is not None and (not btc.empty) and (not qqq.empty):
+            joined = btc.to_frame("BTC").join(qqq.to_frame("QQQ"), how="inner").dropna()
+            indicators["btc_vs_qqq"] = (joined["BTC"] / joined["QQQ"]).dropna()
         else:
-            indicators["spy_trend"] = pd.Series(dtype=float)
-
-        hyg = yf_map.get("HYG", pd.Series(dtype=float))
-        lqd = yf_map.get("LQD", pd.Series(dtype=float))
-        if hyg is not None and lqd is not None and (not hyg.empty) and (not lqd.empty):
-            joined = hyg.to_frame("HYG").join(lqd.to_frame("LQD"), how="inner").dropna()
-            indicators["hyg_lqd_ratio"] = (joined["HYG"] / joined["LQD"]).dropna()
-        else:
-            indicators["hyg_lqd_ratio"] = pd.Series(dtype=float)
-
-        indicators["gold"] = yf_map.get("GLD", pd.Series(dtype=float))
+            indicators["btc_vs_qqq"] = pd.Series(dtype=float)
 
     # Score indicators
     indicator_scores = {}
@@ -1241,7 +967,6 @@ def main():
             sc = indicator_scores.get(ikey, {}).get("score", np.nan)
             if not np.isnan(sc):
                 vals.append(sc)
-
         bscore = float(np.mean(vals)) if vals else np.nan
         block_scores[bkey] = {"score": bscore, "status": classify_status(bscore)}
 
@@ -1261,114 +986,108 @@ def main():
     data_max_date = max(latest_points) if latest_points else None
     now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
-    # Operating lines
-    ops = operating_lines(block_scores, indicator_scores)
+    # Operating lines (crypto)
+    ops = crypto_operating_lines(block_scores, indicator_scores)
 
     # ============================================================
-    # ALERTS (active + recent triggers)
+    # ALERTS (crypto-specific)
     # ============================================================
-    alerts = []
-
-    # Build series needed for alerts
     s_real = indicators.get("real_10y", pd.Series(dtype=float)).dropna()
     s_vix = indicators.get("vix", pd.Series(dtype=float)).dropna()
     s_hy = indicators.get("hy_oas", pd.Series(dtype=float)).dropna()
     s_usd = indicators.get("usd_index", pd.Series(dtype=float)).dropna()
-    s_spytrend = indicators.get("spy_trend", pd.Series(dtype=float)).dropna()
+    s_rs = indicators.get("btc_vs_qqq", pd.Series(dtype=float)).dropna()
 
-    # USD MA filter (for trend)
-    usd_below_ma = pd.Series(dtype=bool)
     usd_above_ma = pd.Series(dtype=bool)
+    usd_below_ma = pd.Series(dtype=bool)
     if not s_usd.empty and len(s_usd) > dxy_ma_days + 10:
         usd_ma = s_usd.rolling(dxy_ma_days).mean()
-        usd_below_ma = (s_usd < usd_ma).dropna()
         usd_above_ma = (s_usd > usd_ma).dropna()
+        usd_below_ma = (s_usd < usd_ma).dropna()
 
-    # Alert conditions (boolean series)
+    # RS confirmation: RS up over rs_days
+    rs_up = pd.Series(dtype=bool)
+    if not s_rs.empty and len(s_rs) > rs_days + 5:
+        rs_up = (s_rs / s_rs.shift(rs_days) - 1.0) > 0.0
+        rs_up = rs_up.dropna()
+
     cond_real_restrictive = (s_real > thr_real_yield) if not s_real.empty else pd.Series(dtype=bool)
     cond_vix_stress = (s_vix > thr_vix) if not s_vix.empty else pd.Series(dtype=bool)
     cond_hy_stress = (s_hy > thr_hy) if not s_hy.empty else pd.Series(dtype=bool)
     cond_usd_tight = usd_above_ma if len(usd_above_ma) else pd.Series(dtype=bool)
-    cond_spy_down = (s_spytrend < spy_trend_thr) if not s_spytrend.empty else pd.Series(dtype=bool)
-
-    def is_active(cond: pd.Series) -> bool:
-        c = cond.dropna()
-        if c.empty:
-            return False
-        return bool(c.iloc[-1])
+    cond_usd_easing = usd_below_ma if len(usd_below_ma) else pd.Series(dtype=bool)
+    cond_rs_confirm = rs_up if len(rs_up) else pd.Series(dtype=bool)
 
     recent_start = pd.Timestamp(datetime.now(timezone.utc).date() - timedelta(days=30))
 
     alerts_def = [
         {
-            "name": "Real yields restrictive",
+            "name": "Real yields restrictive (crypto headwind)",
             "cond": cond_real_restrictive,
             "severity": "bad",
-            "so_what": "Real yields sopra soglia: pressione su equity duration-lunga e su bond in prezzo.",
+            "so_what": "Real yield sopra soglia: risk-free reale competitivo → crypto tende a soffrire (soprattutto alt beta).",
             "trigger": f"DFII10 > {thr_real_yield:.1f}%",
         },
         {
-            "name": "Equity vol stress",
+            "name": "System stress (VIX high) — crypto risk-off",
             "cond": cond_vix_stress,
             "severity": "bad",
-            "so_what": "Vol alta: premi al rischio ↑ → sizing più difensivo.",
+            "so_what": "VIX alto: risk budgets si stringono → crypto raramente riparte in modo sostenibile.",
             "trigger": f"VIX > {thr_vix:.1f}",
         },
         {
-            "name": "Credit spreads stress",
+            "name": "Credit stress (HY spreads) — deleveraging risk",
             "cond": cond_hy_stress,
             "severity": "bad",
-            "so_what": "Credito che si allarga: attenzione a HY / beta equity.",
+            "so_what": "Credito in stress: aumenta probabilità di deleveraging → crypto vulnerabile.",
             "trigger": f"HY OAS > {thr_hy:.2f}pp",
         },
         {
-            "name": "USD tightening impulse",
+            "name": "USD tightening impulse — macro headwind",
             "cond": cond_usd_tight,
             "severity": "warn",
-            "so_what": "USD sopra trend: tightening globale (headwind per risk).",
+            "so_what": "USD sopra trend: tightening globale → spesso frena asset risk e crypto.",
             "trigger": f"USD > MA{dxy_ma_days}",
         },
         {
-            "name": "Equity trend breakdown",
-            "cond": cond_spy_down,
-            "severity": "warn",
-            "so_what": "SPY sotto MA200 (ratio sotto soglia): regime più difensivo.",
-            "trigger": f"SPY/MA200 < {spy_trend_thr:.2f}",
+            "name": "USD easing impulse — macro tailwind",
+            "cond": cond_usd_easing,
+            "severity": "info",
+            "so_what": "USD sotto trend: condizioni più easy → crypto respira (se stress non sale).",
+            "trigger": f"USD < MA{dxy_ma_days}",
+        },
+        {
+            "name": "BTC leadership confirmation (RS vs Nasdaq)",
+            "cond": cond_rs_confirm,
+            "severity": "info",
+            "so_what": "BTC che sovraperforma Nasdaq per settimane: segnale di leadership e domanda crypto più solida.",
+            "trigger": f"BTC/QQQ RS up over {rs_days}d",
         },
     ]
 
     active_alerts = []
     recent_triggers = []
-
     for a in alerts_def:
-        cond = a["cond"]
-        if is_active(cond):
+        if is_active(a["cond"]):
             active_alerts.append(a)
-        dates = last_n_triggers(cond, recent_start)
+        dates = last_n_triggers(a["cond"], recent_start)
         if dates:
             recent_triggers.append({"Alert": a["name"], "Trigger": a["trigger"], "Dates (last 30d)": ", ".join(dates)})
 
     # ============================================================
     # TABS
     # ============================================================
-    tabs = st.tabs([
-        "Overview",
-        "Wallboard",
-        "Deep dive",
-        "What changed",
-        "Alerts",
-        "Report",
-    ])
+    tabs = st.tabs(["Overview", "Wallboard", "Deep dive", "What changed", "Alerts", "Report"])
 
     # ============================================================
-    # OVERVIEW — immediate, professional, mobile-friendly
+    # OVERVIEW
     # ============================================================
     with tabs[0]:
         st.markdown(
             "<div class='section'>"
             "<div class='sectionHead'>"
-            "<div><div class='sectionTitle'>Regime snapshot</div>"
-            "<div class='sectionDesc'>Prima: regime complessivo. Seconda riga: componenti. Terza: implicazioni operative ETF.</div></div>"
+            "<div><div class='sectionTitle'>Crypto regime snapshot</div>"
+            "<div class='sectionDesc'>Prima: regime complessivo per crypto. Secondo: blocchi driver. Terzo: operating lines (BTC/alt/leverage).</div></div>"
             "</div>",
             unsafe_allow_html=True
         )
@@ -1378,13 +1097,13 @@ def main():
             f"""
             <div class="grid2">
               <div class="card">
-                <div class="cardTitle">Global Score (0–100) — core blocks</div>
+                <div class="cardTitle">Global Score (0–100) — Crypto macro regime</div>
                 <div class="cardValue">{gs_txt}</div>
                 <div class="cardSub">{pill_html(global_status)}</div>
                 <div class="cardSub">{score_bar_html(global_score)}</div>
                 <div class="cardSub">
                   <span class="pill info"><span class="dot" style="background:var(--accent2)"></span>
-                    Regime = comportamento prezzi + stress, non forecast
+                    Regime crypto = liquidità + real rates + stress filters, non narrative
                   </span>
                 </div>
               </div>
@@ -1409,56 +1128,47 @@ def main():
             sc_txt = "n/a" if np.isnan(sc) else f"{sc:.1f}"
             return f"{name}: <b>{status_label(stt)}</b> ({sc_txt})"
 
-        market_blocks = ["price_of_time", "macro", "conditions", "plumbing"]
-        structural_blocks = ["policy_link", "external", "gold_block"]
-
         st.markdown(
             f"""
             <div class="grid2" style="margin-top:12px;">
               <div class="card">
-                <div class="cardTitle">Market Thermometers (fast)</div>
+                <div class="cardTitle">Macro drivers (what moves crypto)</div>
                 <div class="cardSub">
-                  {"<br/>".join([block_line(k) for k in market_blocks])}
+                  {block_line("liquidity")}<br/>
+                  {block_line("real_cost")}<br/>
+                  {block_line("filters")}
                 </div>
               </div>
               <div class="card">
-                <div class="cardTitle">Structural Constraints (slow)</div>
-                <div class="cardSub">
-                  {"<br/>".join([block_line(k) for k in structural_blocks])}
-                </div>
+                <div class="cardTitle">Crypto confirmation</div>
+                <div class="cardSub">{block_line("crypto_confirm")}</div>
               </div>
             </div>
             """,
             unsafe_allow_html=True
         )
 
-        # Operating lines (clear + rationale)
         st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
-        st.markdown("<div class='sectionTitle'>ETF operating lines</div>", unsafe_allow_html=True)
-        st.markdown("<div class='sectionDesc'>Sintesi operativa: cosa fare con equity/duration/credit/hedges dato il regime.</div>", unsafe_allow_html=True)
+        st.markdown("<div class='sectionTitle'>Operating lines (crypto)</div>", unsafe_allow_html=True)
+        st.markdown("<div class='sectionDesc'>Sintesi operativa orientata a gestione rischio (non segnali di trading): stance, beta, leverage.</div>", unsafe_allow_html=True)
 
         st.markdown(
             f"""
-            <div class="grid2" style="margin-top:10px;">
+            <div class="grid3" style="margin-top:10px;">
               <div class="card">
-                <div class="cardTitle">Equity</div>
-                <div class="cardValue">{ops["Equity"]["stance"]}</div>
-                <div class="cardSub">{ops["Equity"]["why"]}<br/><span class="muted">{ops["Equity"]["context"]}</span></div>
+                <div class="cardTitle">Crypto stance</div>
+                <div class="cardValue">{ops["Crypto stance"]["stance"]}</div>
+                <div class="cardSub">{ops["Crypto stance"]["why"]}<br/><span class="muted">{ops["Crypto stance"]["context"]}</span></div>
               </div>
               <div class="card">
-                <div class="cardTitle">Duration (bonds)</div>
-                <div class="cardValue">{ops["Duration"]["stance"]}</div>
-                <div class="cardSub">{ops["Duration"]["why"]}<br/><span class="muted">{ops["Duration"]["context"]}</span></div>
+                <div class="cardTitle">BTC vs Alt beta</div>
+                <div class="cardValue">{ops["BTC vs Alt beta"]["stance"]}</div>
+                <div class="cardSub">{ops["BTC vs Alt beta"]["why"]}<br/><span class="muted">{ops["BTC vs Alt beta"]["context"]}</span></div>
               </div>
               <div class="card">
-                <div class="cardTitle">Credit</div>
-                <div class="cardValue">{ops["Credit"]["stance"]}</div>
-                <div class="cardSub">{ops["Credit"]["why"]}<br/><span class="muted">{ops["Credit"]["context"]}</span></div>
-              </div>
-              <div class="card">
-                <div class="cardTitle">Hedges</div>
-                <div class="cardValue">{ops["Hedges"]["stance"]}</div>
-                <div class="cardSub">{ops["Hedges"]["why"]}<br/><span class="muted">{ops["Hedges"]["context"]}</span></div>
+                <div class="cardTitle">Leverage discipline</div>
+                <div class="cardValue">{ops["Leverage"]["stance"]}</div>
+                <div class="cardSub">{ops["Leverage"]["why"]}<br/><span class="muted">{ops["Leverage"]["context"]}</span></div>
               </div>
             </div>
             """,
@@ -1466,35 +1176,31 @@ def main():
         )
 
         st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
-        with st.expander("How to read Risk-on / Neutral / Risk-off (clear + practical)", expanded=False):
+        with st.expander("How to read Risk-on / Neutral / Risk-off for crypto", expanded=False):
             st.markdown(
                 """
-**Risk-on:** stress premia scendono, credito regge, trend equity è costruttivo, USD non stringe troppo.  
-**Neutral:** segnali misti → sizing disciplina > convinzione direzionale.  
-**Risk-off:** stress/tightening domina → proteggere downside (quality, liquidità, hedges).  
+**Risk-on (crypto):** liquidità USD non drena, real yields scendono o non stringono, USD/stress non peggiorano; BTC mostra leadership.  
+**Neutral:** segnali misti → sizing prudente, preferire conferme (RS) ed evitare leverage.  
+**Risk-off:** real yields alti e/o USD forte e/o vol/credito in stress → crypto beta viene venduto; proteggere downside.  
 
-**Scoring (0–100):**
-- **Market thermometers**: z-score ~5Y (z5y) → clamp [-2,+2] → 0–100.
-- **Structural constraints**: percentile ~20Y (pct20y) → map [-2,+2] → 0–100.
-- Soglie: >60 risk-on, 40–60 neutral, <40 risk-off (euristiche).  
+**Nota:** la dashboard non “prevede” prezzi: ti aiuta a capire se l’ambiente macro è **supportivo** o **restrittivo** per crypto.
                 """.strip()
             )
-
-        st.markdown("</div>", unsafe_allow_html=True)  # close section
+        st.markdown("</div>", unsafe_allow_html=True)
 
     # ============================================================
     # WALLBOARD
     # ============================================================
     with tabs[1]:
         st.markdown("## Wallboard")
-        st.markdown("<div class='muted'>Tiles senza grafici: leggi in 30 secondi, poi apri le guide se serve.</div>", unsafe_allow_html=True)
+        st.markdown("<div class='muted'>Tiles (senza grafici): lettura veloce del regime crypto e dei driver macro.</div>", unsafe_allow_html=True)
 
         gs_txt = "n/a" if np.isnan(global_score) else f"{global_score:.1f}"
         st.markdown(
             f"""
             <div class="grid2">
               <div class="card">
-                <div class="cardTitle">Overall regime</div>
+                <div class="cardTitle">Overall crypto regime</div>
                 <div class="cardValue">{gs_txt}</div>
                 <div class="cardSub">{pill_html(global_status)}</div>
                 <div class="cardSub">{score_bar_html(global_score)}</div>
@@ -1502,7 +1208,7 @@ def main():
               <div class="card">
                 <div class="cardTitle">Active alerts (today)</div>
                 <div class="cardSub">
-                  {"None" if not active_alerts else "<br/>".join([f"<b>{a['name']}</b> — {a['trigger']}<br/><span class='muted'>{a['so_what']}</span>" for a in active_alerts[:5]])}
+                  {"None" if not active_alerts else "<br/>".join([f"<b>{a['name']}</b> — {a['trigger']}<br/><span class='muted'>{a['so_what']}</span>" for a in active_alerts[:6]])}
                 </div>
               </div>
             </div>
@@ -1550,19 +1256,17 @@ def main():
                         exp = meta["expander"]
                         st.markdown(f"**What it is:** {exp.get('what','')}")
                         st.markdown(f"**Reference levels / thresholds:** {exp.get('reference','')}")
-                        st.markdown("**How to read it (bi-directional):**")
+                        st.markdown("**How to read it (crypto lens):**")
                         st.markdown(exp.get("interpretation", ""))
-                        st.markdown(f"**Why it matters:** {exp.get('bridge','')}")
+                        st.markdown(f"**Why it matters for crypto:** {exp.get('bridge','')}")
                 else:
                     wallboard_tile(k, s, indicator_scores)
             st.markdown("</div></div>", unsafe_allow_html=True)
 
-        render_group("1) Price of Time", "Tassi e curva: costo del capitale, sconto dei multipli e segnali di ciclo.", ["real_10y", "nominal_10y", "yield_curve_10_2"])
-        render_group("2) Macro Cycle", "Inflazione e crescita: vincolo alla policy, rischio di disinflation vs sticky.", ["breakeven_10y", "cpi_yoy", "unemployment_rate"])
-        render_group("3) Conditions & Stress", "USD, credito, vol e trend: regimi veloci e risk appetite.", ["usd_index", "hy_oas", "vix", "spy_trend", "hyg_lqd_ratio"])
-        render_group("4) Liquidity / Plumbing", "Liquidità di sistema: tailwind/drain sulla propensione al rischio.", ["fed_balance_sheet", "rrp"])
-        render_group("5) Fiscal / Policy Constraint", "Vincoli lenti: debito, deficit e term premium.", ["interest_to_receipts", "deficit_gdp", "term_premium_10y", "interest_payments", "federal_receipts"])
-        render_group("6–7) External & Gold", "Vincolo esterno e conferma hedge demand.", ["current_account_gdp", "gold"])
+        render_group("1) USD Liquidity / Plumbing", "Il motore: liquidità USD e plumbing FED (driver primario per crypto).", ["fed_balance_sheet", "rrp"])
+        render_group("2) Real Cost of Money", "Il vincolo: real yields e tassi (kryptonite o supporto).", ["real_10y", "nominal_10y"])
+        render_group("3) Stress & Filters", "Filtri obbligatori: USD, vol, credito (evitano falsi risk-on crypto).", ["usd_index", "vix", "hy_oas"])
+        render_group("4) Crypto Confirmation", "Conferme: BTC e leadership vs Nasdaq (RS).", ["btc_price", "btc_vs_qqq"])
 
     # ============================================================
     # DEEP DIVE
@@ -1573,17 +1277,15 @@ def main():
 
         group = st.selectbox(
             "Select section",
-            ["Price of Time", "Macro Cycle", "Conditions & Stress", "Liquidity / Plumbing", "Fiscal / Policy Constraint", "External & Gold"],
+            ["USD Liquidity / Plumbing", "Real Cost of Money", "Stress & Filters", "Crypto Confirmation"],
             index=0
         )
 
         group_map = {
-            "Price of Time": ["real_10y", "nominal_10y", "yield_curve_10_2"],
-            "Macro Cycle": ["breakeven_10y", "cpi_yoy", "unemployment_rate"],
-            "Conditions & Stress": ["usd_index", "hy_oas", "vix", "spy_trend", "hyg_lqd_ratio"],
-            "Liquidity / Plumbing": ["fed_balance_sheet", "rrp"],
-            "Fiscal / Policy Constraint": ["interest_to_receipts", "deficit_gdp", "term_premium_10y", "interest_payments", "federal_receipts"],
-            "External & Gold": ["current_account_gdp", "gold"],
+            "USD Liquidity / Plumbing": ["fed_balance_sheet", "rrp"],
+            "Real Cost of Money": ["real_10y", "nominal_10y"],
+            "Stress & Filters": ["usd_index", "vix", "hy_oas"],
+            "Crypto Confirmation": ["btc_price", "btc_vs_qqq"],
         }
 
         keys = group_map[group]
@@ -1630,24 +1332,23 @@ def main():
                 fig = plot_premium(s, meta["label"], ref_line=meta.get("ref_line", None), height=340)
                 st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False}, key=f"deep_{k}")
 
-            with st.expander("Indicator guide (definition, thresholds, why it matters)", expanded=False):
+            with st.expander("Indicator guide (definition, thresholds, why it matters for crypto)", expanded=False):
                 exp = meta["expander"]
                 st.markdown(f"**What it is:** {exp.get('what','')}")
                 st.markdown(f"**Reference levels / thresholds:** {exp.get('reference','')}")
-                st.markdown("**How to read it (bi-directional):**")
+                st.markdown("**How to read it (crypto lens):**")
                 st.markdown(exp.get("interpretation", ""))
-                st.markdown(f"**Why it matters (funding/policy link):** {exp.get('bridge','')}")
+                st.markdown(f"**Why it matters for crypto:** {exp.get('bridge','')}")
 
             st.markdown("</div>", unsafe_allow_html=True)
 
     # ============================================================
-    # WHAT CHANGED — upgraded + “So what” + watchlist
+    # WHAT CHANGED (crypto language)
     # ============================================================
     with tabs[3]:
         st.markdown("## What changed")
         st.markdown(
-            "<div class='muted'>Focus: cosa si muove in modo significativo e/o è vicino a soglie di regime. "
-            "La colonna “So what” traduce il movimento in implicazioni di regime.</div>",
+            "<div class='muted'>Focus: cosa sta cambiando che può muovere il regime crypto (1M/30d/7d) e come impatta (tailwind/headwind).</div>",
             unsafe_allow_html=True
         )
 
@@ -1689,7 +1390,7 @@ def main():
                 "Δ 1Q %": (np.nan if np.isnan(d90) else round(d90, 2)),
                 "Watch": watch,
                 "Attention": round(attention, 2),
-                "So what": so_what_line(key, dwin, score, status),
+                "So what (crypto)": crypto_so_what_line(key, dwin),
                 "_key": key,
             })
 
@@ -1700,7 +1401,7 @@ def main():
 
             wl = df[df["Watch"] == "WATCH"].sort_values("Attention", ascending=False).head(8)
             if not wl.empty:
-                st.markdown("### Watchlist (most relevant movers / threshold proximity)")
+                st.markdown("### Watchlist (likely regime relevance for crypto)")
                 for _, r in wl.iterrows():
                     trend_col = [c for c in df.columns if c.startswith("Trend")][0]
                     st.markdown(
@@ -1709,7 +1410,7 @@ def main():
                           <div class='cardTitle'>{r['Indicator']}</div>
                           <div class='cardSub'>
                             Regime: <b>{r['Regime']}</b> · Score: <b>{r['Score']}</b> · {trend_col}: <b>{r[trend_col]:+,.2f}%</b><br/>
-                            <span class='muted'>{r['So what']}</span>
+                            <span class='muted'>{r['So what (crypto)']}</span>
                           </div>
                         </div>
                         """,
@@ -1719,18 +1420,17 @@ def main():
             st.markdown("### Full table")
             show = df.drop(columns=["_key"])
             st.dataframe(show, use_container_width=True, hide_index=True)
-            st.caption("Note: variazioni % basate sull’osservazione disponibile più vicina; frequenza serie diversa (giornaliera vs mensile vs trimestrale).")
+            st.caption("Note: variazioni % basate sull’osservazione disponibile più vicina; frequenza serie diversa.")
 
     # ============================================================
-    # ALERTS TAB — active + recent triggers + “what to do”
+    # ALERTS TAB
     # ============================================================
     with tabs[4]:
-        st.markdown("## Alerts & triggers (2–6 weeks)")
-        st.markdown("<div class='muted'>Alert = condizioni osservabili che spesso precedono un cambio di marcia su sizing/risk budget.</div>", unsafe_allow_html=True)
+        st.markdown("## Alerts & triggers (crypto regime)")
+        st.markdown("<div class='muted'>Alert = condizioni osservabili che spesso anticipano cambio di marcia nel sentiment crypto (2–6 settimane).</div>", unsafe_allow_html=True)
 
         st.markdown("<div class='grid2'>", unsafe_allow_html=True)
 
-        # Active alerts card
         st.markdown("<div class='card'>", unsafe_allow_html=True)
         st.markdown("<div class='cardTitle'>Active alerts (today)</div>", unsafe_allow_html=True)
         if not active_alerts:
@@ -1738,15 +1438,15 @@ def main():
         else:
             for a in active_alerts:
                 sev = a["severity"]
-                pill = "pill bad" if sev == "bad" else "pill warn"
+                pill_cls = "pill bad" if sev == "bad" else ("pill warn" if sev == "warn" else "pill info")
+                dot_col = "var(--bad)" if sev == "bad" else ("var(--warn)" if sev == "warn" else "var(--accent2)")
                 st.markdown(
-                    f"<div class='cardSub'><span class='{pill}'><span class='dot' style='background:var(--bad)'></span>{a['name']}</span>"
+                    f"<div class='cardSub'><span class='{pill_cls}'><span class='dot' style='background:{dot_col}'></span>{a['name']}</span>"
                     f" &nbsp; <b>{a['trigger']}</b><br/><span class='muted'>{a['so_what']}</span></div>",
                     unsafe_allow_html=True
                 )
         st.markdown("</div>", unsafe_allow_html=True)
 
-        # Recent triggers card
         st.markdown("<div class='card'>", unsafe_allow_html=True)
         st.markdown("<div class='cardTitle'>Recent triggers (last 30 days)</div>", unsafe_allow_html=True)
         if not recent_triggers:
@@ -1759,32 +1459,32 @@ def main():
         st.markdown("</div>", unsafe_allow_html=True)
 
         st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
-        st.markdown("<div class='sectionTitle'>What to do when alerts cluster</div>", unsafe_allow_html=True)
+        st.markdown("<div class='sectionTitle'>How to react (crypto playbook)</div>", unsafe_allow_html=True)
         st.markdown(
             """
-- **2+ alert “bad” insieme** → de-risk: riduci beta equity, preferisci qualità, accorcia rischio credito.
-- **USD tightening + credit stress** → privilegia liquidità/hedges (cash-like, qualità IG, USD).
-- **Real yields restrictive + trend equity fragile** → evita duration lunga + equity growth “pura”.
-- **Alert che si spengono** → ri-aumenta rischio gradualmente (sizing misurato).
+- **2+ alert “bad” insieme** → modalità difensiva: riduci alt beta/leverage, preferisci liquidità e qualità (BTC).
+- **Real yields restrictive + USD tightening** → ambiente duro: evitare inseguimenti, aspettare miglioramento macro.
+- **Stress (VIX/HY) che rientra + USD easing** → condizioni migliorano: aumentare rischio gradualmente.
+- **RS BTC vs Nasdaq in salita per settimane** → conferma leadership: più affidabile un risk-on crypto (sempre con sizing).
             """.strip()
         )
 
     # ============================================================
-    # REPORT TAB — clean, hidden, copy/paste
+    # REPORT TAB
     # ============================================================
     with tabs[5]:
         st.markdown("## Report (copy/paste)")
-        st.markdown("<div class='muted'>Genera un blocco copiaincolla (prompt + payload YAML) per ottenere un report AI in un’altra chat.</div>", unsafe_allow_html=True)
+        st.markdown("<div class='muted'>Genera un blocco copiaincolla (prompt + payload YAML) per ottenere un report AI sul regime crypto in un’altra chat.</div>", unsafe_allow_html=True)
 
         def build_yaml_payload():
             payload_lines = []
-            payload_lines.append("macro_regime_payload:")
+            payload_lines.append("crypto_macro_payload:")
             payload_lines.append(f"  generated_at_utc: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
             payload_lines.append(f"  history_years: {years_back}")
             payload_lines.append(f"  latest_datapoint_date: {('null' if data_max_date is None else str(pd.to_datetime(data_max_date).date()))}")
             payload_lines.append(f"  global_score: {0.0 if np.isnan(global_score) else round(global_score, 1)}")
             payload_lines.append(f"  global_status: {global_status}")
-            payload_lines.append("  scoring_notes: \"Market thermometers use z5y; structural constraints use pct20y\"")
+            payload_lines.append("  thesis: \"Crypto sentiment is mainly driven by USD liquidity, real rates, and system risk appetite; narratives are secondary for timing.\"")
 
             payload_lines.append("  blocks:")
             for bkey, binfo in BLOCKS.items():
@@ -1798,8 +1498,8 @@ def main():
                 payload_lines.append(f"      status: {bstatus}")
 
             payload_lines.append("  operating_lines:")
-            for k in ["Equity", "Duration", "Credit", "Hedges"]:
-                payload_lines.append(f"    {k.lower()}:")
+            for k in ["Crypto stance", "BTC vs Alt beta", "Leverage"]:
+                payload_lines.append(f"    {k.lower().replace(' ','_')}:")
                 payload_lines.append(f"      stance: \"{ops[k]['stance']}\"")
                 payload_lines.append(f"      why: \"{ops[k]['why']}\"")
                 payload_lines.append(f"      context: \"{ops[k]['context']}\"")
@@ -1810,7 +1510,7 @@ def main():
             payload_lines.append(f"      vix_stress_gt: {thr_vix:.2f}")
             payload_lines.append(f"      hy_oas_stress_gt: {thr_hy:.2f}")
             payload_lines.append(f"      usd_ma_days: {dxy_ma_days}")
-            payload_lines.append(f"      spy_trend_lt: {spy_trend_thr:.2f}")
+            payload_lines.append(f"      rs_window_days: {rs_days}")
 
             payload_lines.append("    active_today:")
             if not active_alerts:
@@ -1854,9 +1554,7 @@ def main():
                 payload_lines.append(f"      trend_change_pct: {0.0 if np.isnan(dwin) else round(dwin, 2)}")
                 payload_lines.append(f"      reference_line: {('null' if meta.get('ref_line', None) is None else meta.get('ref_line'))}")
                 payload_lines.append(f"      reference_notes: \"{meta['expander'].get('reference','')}\"")
-                # brief guide keys (compact)
-                payload_lines.append(f"      what: \"{meta['expander'].get('what','')}\"")
-                payload_lines.append(f"      how_to_read: \"{meta['expander'].get('interpretation','').replace(chr(10),' / ')}\"")
+                payload_lines.append(f"      so_what_crypto: \"{crypto_so_what_line(key, dwin)}\"")
 
             return "\n".join(payload_lines)
 
@@ -1876,7 +1574,7 @@ def main():
         one_shot = st.session_state.get("one_shot", "")
         if one_shot:
             st.text_area("Copy/paste block", one_shot, height=520)
-            st.download_button("Download (.txt)", one_shot, file_name="global_markets_report_block.txt", mime="text/plain")
+            st.download_button("Download (.txt)", one_shot, file_name="crypto_macro_report_block.txt", mime="text/plain")
         else:
             st.info("Premi “Generate prompt + payload” per creare il blocco copiaincolla.")
 
